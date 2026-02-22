@@ -5,6 +5,7 @@ interface ThreadListPanelProps {
   threads: ThreadSummary[];
   activeThreadId: string | null;
   busy: boolean;
+  collapsed: boolean;
   onRefreshThreads: () => void;
   onSelectThread: (threadId: string) => void;
 }
@@ -13,11 +14,16 @@ export function ThreadListPanel({
   threads,
   activeThreadId,
   busy,
+  collapsed,
   onRefreshThreads,
   onSelectThread,
 }: ThreadListPanelProps) {
   return (
-    <aside className="thread-panel" aria-label="thread list panel">
+    <aside
+      className={`thread-panel ${collapsed ? "is-collapsed" : ""}`}
+      aria-label="thread list panel"
+      aria-hidden={collapsed}
+    >
       <div className="thread-panel-header">
         <h2>Threads</h2>
         <div className="thread-panel-actions">

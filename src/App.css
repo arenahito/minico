@@ -69,6 +69,52 @@ pre {
   }
 }
 
+@keyframes settings-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes settings-overlay-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes settings-modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes settings-modal-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+}
+
+@property --thread-panel-open-ratio {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 1;
+}
+
 .app-shell {
   height: 100%;
   min-height: 100%;
@@ -117,19 +163,25 @@ pre {
 
 .app-main {
   --thread-panel-width: 320px;
+  --thread-panel-open-ratio: 1;
   flex: 1;
   display: grid;
-  grid-template-columns: 56px var(--thread-panel-width) 8px 1fr;
+  grid-template-columns:
+    56px
+    calc(var(--thread-panel-width) * var(--thread-panel-open-ratio))
+    calc(8px * var(--thread-panel-open-ratio))
+    minmax(0, 1fr);
   gap: 0;
   padding: 0;
   min-height: 0;
   overflow: hidden;
   background: var(--bg-panel);
   border-top: 1px solid var(--border-default);
+  transition: --thread-panel-open-ratio 300ms ease;
 }
 
 .app-main.is-thread-panel-collapsed {
-  grid-template-columns: 56px 1fr;
+  --thread-panel-open-ratio: 0;
 }
 
 .app-sidebar-toolbar {
@@ -183,12 +235,24 @@ pre {
   border-right: none;
   border-radius: 0;
   background: transparent;
-  padding: var(--space-4);
+  padding: calc(var(--space-4) * var(--thread-panel-open-ratio));
   display: grid;
   gap: var(--space-3);
   align-content: start;
   min-height: 0;
+  min-width: 0;
   overflow: hidden;
+  opacity: 1;
+  transform: translateX(0);
+  transition:
+    opacity 300ms ease,
+    transform 300ms ease;
+}
+
+.thread-panel.is-collapsed {
+  opacity: 0;
+  transform: translateX(-10px);
+  pointer-events: none;
 }
 
 .thread-panel-resizer {
@@ -197,6 +261,14 @@ pre {
   cursor: col-resize;
   touch-action: none;
   background: transparent;
+  overflow: hidden;
+  opacity: 1;
+  transition: opacity 300ms ease;
+}
+
+.thread-panel-resizer.is-collapsed {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .thread-panel-resizer::before {
@@ -208,6 +280,8 @@ pre {
   width: 1px;
   transform: translateX(-50%);
   background: var(--border-default);
+  opacity: var(--thread-panel-open-ratio);
+  transition: opacity 300ms ease;
 }
 
 .thread-panel-resizer:hover::before,
@@ -883,6 +957,11 @@ pre {
   place-items: center;
   padding: var(--space-5);
   z-index: 25;
+  animation: settings-overlay-in 300ms ease;
+}
+
+.settings-modal-overlay.is-closing {
+  animation: settings-overlay-out 300ms ease forwards;
 }
 
 .settings-modal {
@@ -896,6 +975,11 @@ pre {
   gap: var(--space-2);
   padding: var(--space-3);
   overflow: hidden;
+  animation: settings-modal-in 300ms ease;
+}
+
+.settings-modal.is-closing {
+  animation: settings-modal-out 300ms ease forwards;
 }
 
 .settings-modal-close {
@@ -1008,6 +1092,10 @@ button:disabled {
   .app-main {
     grid-template-columns: 1fr;
     padding: 0;
+  }
+
+  .app-main.is-thread-panel-collapsed {
+    grid-template-columns: 1fr;
   }
 
   .main-content {

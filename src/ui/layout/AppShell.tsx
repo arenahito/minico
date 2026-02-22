@@ -160,6 +160,7 @@ const THREAD_PANEL_MIN_WIDTH = 220;
 const THREAD_PANEL_MAX_WIDTH = 560;
 const CHAT_PANE_MIN_WIDTH = 420;
 const DEFAULT_THREAD_PANEL_WIDTH = 320;
+const SETTINGS_MODAL_ANIMATION_MS = 300;
 const REASONING_EFFORTS = new Set<ReasoningEffort>([
   "none",
   "minimal",
@@ -266,6 +267,7 @@ export function AppShell() {
   const [approvalState, setApprovalState] =
     useState<ApprovalState>(initialApprovalState);
   const [showSettings, setShowSettings] = useState(false);
+  const [settingsClosing, setSettingsClosing] = useState(false);
   const [composerValue, setComposerValue] = useState("");
   const [modelCatalog, setModelCatalog] = useState<ModelSummary[]>(FALLBACK_MODELS);
   const [selectedModel, setSelectedModel] = useState(FALLBACK_MODELS[0].model);
@@ -286,6 +288,7 @@ export function AppShell() {
   const appMainRef = useRef<HTMLElement | null>(null);
   const authRefreshInFlightRef = useRef(false);
   const startupAuthSlowTimerRef = useRef<number | null>(null);
+  const settingsCloseTimerRef = useRef<number | null>(null);
   const selectedModelRef = useRef(selectedModel);
   const threadPanelWidthRef = useRef(threadPanelWidth);
   const persistedThreadPanelOpenRef = useRef<boolean | null>(null);
@@ -335,6 +338,10 @@ export function AppShell() {
     return () => {
       dragCleanupRef.current?.();
       dragCleanupRef.current = null;
+      if (settingsCloseTimerRef.current !== null) {
+        window.clearTimeout(settingsCloseTimerRef.current);
+        settingsCloseTimerRef.current = null;
+      }
     };
   }, []);
 
@@ -419,7 +426,7 @@ export function AppShell() {
 
   useEffect(() => {
     if (auth.view !== "loggedIn") {
-      setShowSettings(false);
+      closeSettingsModal(true);
       setWorkspacePath(null);
       setThreadPanelOpen(true);
       setActiveThreadId(null);
@@ -548,14 +555,14 @@ export function AppShell() {
     }
     function handleKeyDown(event: KeyboardEvent): void {
       if (event.key === "Escape") {
-        setShowSettings(false);
+        closeSettingsModal();
       }
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [showSettings]);
+  }, [showSettings, settingsClosing]);
 
   useEffect(() => {
     if (auth.view !== "loggedIn") {
@@ -986,11 +993,44 @@ export function AppShell() {
         dragCleanupRef.current?.();
         dragCleanupRef.current = null;
         setThreadPanelResizing(false);
-        setShowSettings(false);
+        closeSettingsModal(true);
       }
       persistThreadPanelOpenIfChanged(nextOpen);
       return nextOpen;
     });
+  }
+
+  function openSettingsModal(): void {
+    if (settingsCloseTimerRef.current !== null) {
+      window.clearTimeout(settingsCloseTimerRef.current);
+      settingsCloseTimerRef.current = null;
+    }
+    setSettingsClosing(false);
+    setShowSettings(true);
+  }
+
+  function closeSettingsModal(immediate = false): void {
+    if (immediate) {
+      if (settingsCloseTimerRef.current !== null) {
+        window.clearTimeout(settingsCloseTimerRef.current);
+        settingsCloseTimerRef.current = null;
+      }
+      setSettingsClosing(false);
+      setShowSettings(false);
+      return;
+    }
+    if (!showSettings || settingsClosing) {
+      return;
+    }
+    setSettingsClosing(true);
+    if (settingsCloseTimerRef.current !== null) {
+      window.clearTimeout(settingsCloseTimerRef.current);
+    }
+    settingsCloseTimerRef.current = window.setTimeout(() => {
+      settingsCloseTimerRef.current = null;
+      setSettingsClosing(false);
+      setShowSettings(false);
+    }, SETTINGS_MODAL_ANIMATION_MS);
   }
 
   function handleThreadPanelResizeStart(
@@ -1139,29 +1179,29 @@ export function AppShell() {
               className={`toolbar-button toolbar-button-settings ${showSettings ? "is-active" : ""}`}
               aria-label="Open settings"
               title="Settings"
-              onClick={() => setShowSettings(true)}
+              onClick={openSettingsModal}
             >
               <Settings size={17} aria-hidden="true" />
             </button>
           </aside>
-          {threadPanelOpen ? (
-            <>
-              <ThreadListPanel
-                threads={threads}
-                activeThreadId={activeThreadId}
-                busy={busy}
-                onRefreshThreads={() => void refreshThreads()}
-                onSelectThread={(threadId) => void handleSelectThread(threadId)}
-              />
-              <div
-                className={`thread-panel-resizer ${threadPanelResizing ? "is-dragging" : ""}`}
-                role="separator"
-                aria-label="Resize thread panel"
-                aria-orientation="vertical"
-                onPointerDown={handleThreadPanelResizeStart}
-              />
-            </>
-          ) : null}
+          <ThreadListPanel
+            threads={threads}
+            activeThreadId={activeThreadId}
+            busy={busy}
+            collapsed={!threadPanelOpen}
+            onRefreshThreads={() => void refreshThreads()}
+            onSelectThread={(threadId) => void handleSelectThread(threadId)}
+          />
+          <div
+            className={`thread-panel-resizer ${threadPanelResizing ? "is-dragging" : ""} ${
+              threadPanelOpen ? "" : "is-collapsed"
+            }`}
+            role="separator"
+            aria-label="Resize thread panel"
+            aria-orientation="vertical"
+            aria-hidden={!threadPanelOpen}
+            onPointerDown={handleThreadPanelResizeStart}
+          />
 
           <section className="main-content">
             <ChatView
@@ -1200,19 +1240,24 @@ export function AppShell() {
 
       {auth.view === "loggedIn" && showSettings ? (
         <div
-          className="settings-modal-overlay"
+          className={`settings-modal-overlay ${settingsClosing ? "is-closing" : ""}`}
           role="presentation"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) {
-              setShowSettings(false);
+              closeSettingsModal();
             }
           }}
         >
-          <section className="settings-modal" role="dialog" aria-modal="true" aria-label="Settings">
+          <section
+            className={`settings-modal ${settingsClosing ? "is-closing" : ""}`}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Settings"
+          >
             <button
               type="button"
               className="settings-modal-close"
-              onClick={() => setShowSettings(false)}
+              onClick={() => closeSettingsModal()}
               aria-label="Close settings"
               title="Close"
             >
