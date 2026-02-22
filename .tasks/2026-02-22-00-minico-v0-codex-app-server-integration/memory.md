@@ -43,3 +43,35 @@ cmd /c rmdir /s /q "_bootstrap"
 **Resolution**: Added targeted `#[allow(dead_code)]` on placeholder items and kept behavior-tested constructors/methods so warning-free pipelines remain strict where it matters.
 
 **Scope**: `task-specific`
+
+## X2: Implement MinicoConfig and Codex Path/Home Isolation Policy
+
+### Configuration: Preserve unknown fields during settings roundtrip
+
+**Context**: X2 required forward compatibility for settings schema while still allowing typed access in Rust and TypeScript.
+
+**Problem**: A plain typed struct drops unknown JSON keys when re-serialized, which can remove future settings after one save operation.
+
+**Resolution**: Added `#[serde(flatten)] extra: HashMap<String, serde_json::Value>` at root and nested config structs, then added a roundtrip test that parses unknown keys and verifies they remain after `save()` writes config back.
+
+**Scope**: `codebase`
+
+### Error Handling: Separate read and write IO failures for user diagnostics
+
+**Context**: Settings APIs return error messages directly to UI in this phase.
+
+**Problem**: Reusing one IO error variant made write failures appear as read failures, reducing the quality of troubleshooting guidance.
+
+**Resolution**: Split IO errors into `ReadConfig` and `WriteConfig`, mapping `read_to_string` to `ReadConfig` and `create_dir_all`/`write` to `WriteConfig`.
+
+**Scope**: `codebase`
+
+### Testing: UI validation should prove save blocking behavior
+
+**Context**: The settings form validates `codex.path` before persisting changes.
+
+**Problem**: It is easy to accidentally still call save after a failed validation when refactoring form submit flow.
+
+**Resolution**: Added `SettingsView` test case that mocks invalid validation result and asserts `saveSettings` is not called while the validation error message is displayed.
+
+**Scope**: `task-specific`

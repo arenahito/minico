@@ -1,4 +1,5 @@
 import { initialSessionState } from "../../core/session/store";
+import { SettingsView } from "../settings/SettingsView";
 
 export function AppShell() {
   return (
@@ -17,6 +18,7 @@ export function AppShell() {
             Target: <strong>{initialSessionState.buildTarget}</strong>
           </p>
         </section>
+        <SettingsView />
       </main>
     </div>
   );

@@ -11,7 +11,7 @@
     {
       "id": "80bfdcdd-f4c0-4be3-9e5e-b33ba07f3324",
       "title": "X2: Implement MinicoConfig and Codex Path/Home Isolation Policy",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "07dc6221-022c-4efa-baf2-981aaf8f0818"
       ]

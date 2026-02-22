@@ -1974,11 +1974,14 @@ checksum = "6877bb514081ee2a7ff5ef9de3281f14a4dd4bceac4c09388074a6b5df8a139a"
 name = "minico"
 version = "0.1.0"
 dependencies = [
+ "dirs",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-opener",
+ "tempfile",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

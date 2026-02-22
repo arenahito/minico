@@ -51,7 +51,9 @@ body {
 
 .app-main {
   display: grid;
-  place-items: center;
+  gap: 16px;
+  align-content: start;
+  justify-items: center;
   padding: 24px;
 }
 
@@ -71,4 +73,58 @@ body {
 .status-card p {
   margin: 0;
   color: #4a5057;
+}
+
+.settings-form {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.settings-form input,
+.settings-form select,
+.settings-form button {
+  font: inherit;
+}
+
+.settings-form input,
+.settings-form select {
+  width: 100%;
+  border: 1px solid #ccd4db;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.settings-actions button {
+  border: 1px solid #1d5f7a;
+  background: #1f6b8d;
+  color: #fff;
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.settings-actions button[type="button"] {
+  background: #fff;
+  color: #1d5f7a;
+}
+
+.settings-actions button:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+.form-error {
+  color: #a02828;
 }

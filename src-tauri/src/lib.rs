@@ -9,8 +9,12 @@ fn app_ready_message() -> &'static str {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .manage(core::config::MinicoConfig::default())
-        .invoke_handler(tauri::generate_handler![app_ready_message])
+        .invoke_handler(tauri::generate_handler![
+            app_ready_message,
+            core::config::settings_read,
+            core::config::settings_write,
+            core::config::settings_validate_codex_path
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
