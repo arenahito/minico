@@ -24,6 +24,7 @@ pub fn run() {
             core::auth::auth_login_start_chatgpt,
             core::auth::auth_logout_and_read,
             core::thread_turn::session_poll_events,
+            core::thread_turn::model_list,
             core::thread_turn::thread_list,
             core::thread_turn::thread_start,
             core::thread_turn::thread_resume,

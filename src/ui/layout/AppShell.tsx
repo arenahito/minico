@@ -22,11 +22,14 @@ import {
 } from "../../core/approval/approvalStore";
 import {
   interruptTurn,
+  listModels,
   listThreads,
   pollSessionEvents,
   resumeThread,
   startThread,
   startTurn,
+  type ModelSummary,
+  type ReasoningEffort,
   type SessionPolledEvent,
   type ThreadSummary,
 } from "../../core/chat/threadService";
@@ -50,8 +53,9 @@ import {
   initializeWindowPlacementLifecycle,
   persistWindowPlacement,
 } from "../../core/window/windowStateClient";
+import { resolveActiveCwd } from "../../core/workspace/workspaceStore";
 import { ApprovalDialog } from "../approval/ApprovalDialog";
-import { ChatView } from "../chat/ChatView";
+import { ChatView, type ComposerSelectOption } from "../chat/ChatView";
 import { ThreadListPanel } from "../chat/ThreadListPanel";
 import { ErrorBanner } from "../common/ErrorBanner";
 import { LoginView } from "../login/LoginView";
@@ -137,6 +141,83 @@ function shouldAutoRefreshAuth(view: AuthMachineState["view"]): boolean {
   );
 }
 
+type SelectorStage = "model" | "effort";
+
+const MODEL_SELECTOR_BACK_VALUE = "__back_to_model__";
+const EFFORT_SELECTOR_DEFAULT_VALUE = "__use_default_effort__";
+const REASONING_EFFORTS = new Set<ReasoningEffort>([
+  "none",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+]);
+
+const FALLBACK_MODELS: ModelSummary[] = ["gpt-5", "gpt-5-mini", "o4-mini"].map(
+  (model, index) => ({
+    id: model,
+    model,
+    displayName: model,
+    isDefault: index === 0,
+    defaultReasoningEffort: null,
+    supportedReasoningEfforts: [],
+  }),
+);
+
+function normalizeReasoningEffort(value: string | null | undefined): ReasoningEffort | null {
+  if (!value) {
+    return null;
+  }
+  if (REASONING_EFFORTS.has(value as ReasoningEffort)) {
+    return value as ReasoningEffort;
+  }
+  return null;
+}
+
+function resolveModelCatalog(models: ModelSummary[]): ModelSummary[] {
+  const uniqueByModel = new Map<string, ModelSummary>();
+  for (const model of models) {
+    const name = model.model.trim();
+    if (!name || uniqueByModel.has(name)) {
+      continue;
+    }
+    uniqueByModel.set(name, {
+      ...model,
+      model: name,
+      displayName: model.displayName?.trim() || name,
+      defaultReasoningEffort: normalizeReasoningEffort(model.defaultReasoningEffort),
+      supportedReasoningEfforts: model.supportedReasoningEfforts
+        .map((effort) => normalizeReasoningEffort(effort))
+        .filter((effort): effort is ReasoningEffort => effort !== null),
+    });
+  }
+  if (uniqueByModel.size === 0) {
+    return FALLBACK_MODELS;
+  }
+  return [...uniqueByModel.values()];
+}
+
+function resolveEffortForModel(model: ModelSummary | null): ReasoningEffort | null {
+  if (!model) {
+    return null;
+  }
+  if (model.defaultReasoningEffort) {
+    return model.defaultReasoningEffort;
+  }
+  if (model.supportedReasoningEfforts.length > 0) {
+    return model.supportedReasoningEfforts[0];
+  }
+  return null;
+}
+
+function modelOptionsFromCatalog(catalog: ModelSummary[]): ComposerSelectOption[] {
+  return catalog.map((model) => ({
+    value: model.model,
+    label: model.displayName,
+  }));
+}
+
 export function AppShell() {
   const [auth, setAuth] = useState<AuthMachineState>(initialAuthMachineState);
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
@@ -149,20 +230,35 @@ export function AppShell() {
     useState<ApprovalState>(initialApprovalState);
   const [showSettings, setShowSettings] = useState(false);
   const [composerValue, setComposerValue] = useState("");
+  const [modelCatalog, setModelCatalog] = useState<ModelSummary[]>(FALLBACK_MODELS);
+  const [selectedModel, setSelectedModel] = useState(FALLBACK_MODELS[0].model);
+  const [selectedEffort, setSelectedEffort] = useState<ReasoningEffort | null>(null);
+  const [selectorStage, setSelectorStage] = useState<SelectorStage>("model");
+  const [workspacePath, setWorkspacePath] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [error, setError] = useState<UserFacingError | null>(null);
   const [authRefreshKey, setAuthRefreshKey] = useState(0);
   const [authStatusChecking, setAuthStatusChecking] = useState(false);
+  const [startupAuthCheckPending, setStartupAuthCheckPending] = useState(true);
+  const [startupAuthCheckSlow, setStartupAuthCheckSlow] = useState(false);
+  const startupAuthCheckPendingRef = useRef(true);
   const authRefreshInFlightRef = useRef(false);
+  const startupAuthSlowTimerRef = useRef<number | null>(null);
+  const selectedModelRef = useRef(selectedModel);
   const pollInFlightRef = useRef(false);
   const autoCancelInFlightRef = useRef<Set<number>>(new Set());
+  const localUserItemSeqRef = useRef(0);
 
   const activeApproval = useMemo(
     () => currentApproval(approvalState),
     [approvalState],
   );
   const turnItems = useMemo(() => orderedTurnItems(turnState), [turnState]);
+  const selectedModelSummary = useMemo(
+    () => modelCatalog.find((model) => model.model === selectedModel) ?? null,
+    [modelCatalog, selectedModel],
+  );
 
   useEffect(() => {
     void initializeWindowPlacementLifecycle();
@@ -178,6 +274,10 @@ export function AppShell() {
   }, []);
 
   useEffect(() => {
+    selectedModelRef.current = selectedModel;
+  }, [selectedModel]);
+
+  useEffect(() => {
     if (authRefreshInFlightRef.current) {
       return;
     }
@@ -185,6 +285,12 @@ export function AppShell() {
     let cancelled = false;
     authRefreshInFlightRef.current = true;
     setAuthStatusChecking(true);
+    if (startupAuthCheckPendingRef.current) {
+      setStartupAuthCheckSlow(false);
+      startupAuthSlowTimerRef.current = window.setTimeout(() => {
+        setStartupAuthCheckSlow(true);
+      }, 8000);
+    }
     setAuth((current) => reduceAuthMachine(current, { type: "bootstrapRequested" }));
     void readAuthStatusWithTimeout(30000)
       .then((status) => {
@@ -212,12 +318,25 @@ export function AppShell() {
       .finally(() => {
         if (!cancelled) {
           setAuthStatusChecking(false);
+          if (startupAuthCheckPendingRef.current) {
+            startupAuthCheckPendingRef.current = false;
+            setStartupAuthCheckPending(false);
+            setStartupAuthCheckSlow(false);
+          }
+        }
+        if (startupAuthSlowTimerRef.current !== null) {
+          window.clearTimeout(startupAuthSlowTimerRef.current);
+          startupAuthSlowTimerRef.current = null;
         }
         authRefreshInFlightRef.current = false;
       });
 
     return () => {
       cancelled = true;
+      if (startupAuthSlowTimerRef.current !== null) {
+        window.clearTimeout(startupAuthSlowTimerRef.current);
+        startupAuthSlowTimerRef.current = null;
+      }
     };
   }, [authRefreshKey]);
 
@@ -239,6 +358,7 @@ export function AppShell() {
 
   useEffect(() => {
     if (auth.view !== "loggedIn") {
+      setWorkspacePath(null);
       return;
     }
 
@@ -263,6 +383,73 @@ export function AppShell() {
       cancelled = true;
     };
   }, [auth.view, activeThreadId]);
+
+  useEffect(() => {
+    if (auth.view !== "loggedIn") {
+      return;
+    }
+
+    let cancelled = false;
+    void resolveActiveCwd()
+      .then((resolved) => {
+        if (!cancelled) {
+          setWorkspacePath(resolved.cwd);
+        }
+      })
+      .catch((reason) => {
+        if (!cancelled) {
+          setError(mapErrorToUserFacing(reason));
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [auth.view]);
+
+  useEffect(() => {
+    if (auth.view !== "loggedIn") {
+      setModelCatalog(FALLBACK_MODELS);
+      setSelectedModel(FALLBACK_MODELS[0].model);
+      setSelectedEffort(resolveEffortForModel(FALLBACK_MODELS[0]));
+      setSelectorStage("model");
+      return;
+    }
+
+    let cancelled = false;
+    void listModels()
+      .then((loaded) => {
+        if (cancelled) {
+          return;
+        }
+        const catalog = resolveModelCatalog(loaded);
+        setModelCatalog(catalog);
+        const defaultModel = catalog.find((model) => model.isDefault)?.model ?? null;
+        const nextModel =
+          (defaultModel && catalog.some((model) => model.model === defaultModel)
+            ? defaultModel
+            : null) ??
+          (catalog.some((model) => model.model === selectedModelRef.current)
+            ? selectedModelRef.current
+            : catalog[0].model);
+        const nextSummary = catalog.find((model) => model.model === nextModel) ?? null;
+        setSelectedModel(nextModel);
+        setSelectedEffort(resolveEffortForModel(nextSummary));
+        setSelectorStage("model");
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setModelCatalog(FALLBACK_MODELS);
+          setSelectedModel(FALLBACK_MODELS[0].model);
+          setSelectedEffort(resolveEffortForModel(FALLBACK_MODELS[0]));
+          setSelectorStage("model");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [auth.view]);
 
   useEffect(() => {
     if (auth.view !== "loginInProgress" && auth.view !== "loggedIn") {
@@ -376,6 +563,7 @@ export function AppShell() {
     try {
       const started = await startThread();
       setActiveThreadId(started.threadId);
+      setWorkspacePath(started.cwd);
       dispatchTurn({ type: "resetThread", threadId: started.threadId });
       await refreshThreads();
     } catch (reason) {
@@ -390,7 +578,12 @@ export function AppShell() {
     try {
       const resumed = await resumeThread(threadId);
       setActiveThreadId(resumed.threadId);
-      dispatchTurn({ type: "resetThread", threadId: resumed.threadId });
+      setWorkspacePath(resumed.cwd);
+      dispatchTurn({
+        type: "hydrateThreadHistory",
+        threadId: resumed.threadId,
+        items: resumed.historyItems,
+      });
     } catch (reason) {
       setError(mapErrorToUserFacing(reason));
     } finally {
@@ -411,10 +604,25 @@ export function AppShell() {
         const started = await startThread();
         targetThreadId = started.threadId;
         setActiveThreadId(started.threadId);
+        setWorkspacePath(started.cwd);
         dispatchTurn({ type: "resetThread", threadId: started.threadId });
       }
 
-      const turn = await startTurn(targetThreadId, trimmed);
+      localUserItemSeqRef.current += 1;
+      dispatchTurn({
+        type: "userPromptSubmitted",
+        threadId: targetThreadId,
+        itemId: `local-user-${localUserItemSeqRef.current}`,
+        text: trimmed,
+      });
+
+      const turn = await startTurn(
+        targetThreadId,
+        trimmed,
+        selectedModel,
+        selectedEffort,
+      );
+      setWorkspacePath(turn.cwd);
       if (turn.turnId) {
         dispatchTurn({
           type: "turnStarted",
@@ -529,6 +737,81 @@ export function AppShell() {
     setAuthRefreshKey((current) => current + 1);
   }
 
+  const selectorLabel =
+    selectorStage === "model"
+      ? "Select model"
+      : `Select reasoning effort for ${selectedModel}`;
+  const selectorDisplay = useMemo(() => {
+    const effectiveEffort =
+      selectedEffort ??
+      selectedModelSummary?.defaultReasoningEffort ??
+      "default";
+    return `${selectedModel} / ${effectiveEffort}`;
+  }, [selectedEffort, selectedModel, selectedModelSummary]);
+  const selectorOptions = useMemo<ComposerSelectOption[]>(() => {
+    if (selectorStage === "model") {
+      return modelOptionsFromCatalog(modelCatalog);
+    }
+    const effortValues = selectedModelSummary
+      ? [...new Set(selectedModelSummary.supportedReasoningEfforts)]
+      : [];
+    const defaultLabel = selectedModelSummary?.defaultReasoningEffort
+      ? `Default (${selectedModelSummary.defaultReasoningEffort})`
+      : "Default (server)";
+    const options: ComposerSelectOption[] = [
+      { value: MODEL_SELECTOR_BACK_VALUE, label: "← Back to model selection" },
+      { value: EFFORT_SELECTOR_DEFAULT_VALUE, label: defaultLabel },
+    ];
+    for (const effort of effortValues) {
+      options.push({ value: effort, label: effort });
+    }
+    return options;
+  }, [modelCatalog, selectedModelSummary, selectorStage]);
+  const selectorValue = useMemo(() => {
+    if (selectorStage === "model") {
+      return selectedModel;
+    }
+    if (!selectedEffort) {
+      return EFFORT_SELECTOR_DEFAULT_VALUE;
+    }
+    const effortValues = selectedModelSummary
+      ? new Set(selectedModelSummary.supportedReasoningEfforts)
+      : new Set<ReasoningEffort>();
+    return effortValues.has(selectedEffort)
+      ? selectedEffort
+      : EFFORT_SELECTOR_DEFAULT_VALUE;
+  }, [selectedEffort, selectedModel, selectedModelSummary, selectorStage]);
+
+  function handleComposerSelectorChange(nextValue: string): boolean {
+    if (selectorStage === "model") {
+      const nextModel = modelCatalog.find((model) => model.model === nextValue) ?? null;
+      if (!nextModel) {
+        return false;
+      }
+      setSelectedModel(nextModel.model);
+      setSelectedEffort(resolveEffortForModel(nextModel));
+      setSelectorStage("effort");
+      return false;
+    }
+
+    if (nextValue === MODEL_SELECTOR_BACK_VALUE) {
+      setSelectorStage("model");
+      return false;
+    }
+    if (nextValue === EFFORT_SELECTOR_DEFAULT_VALUE) {
+      setSelectedEffort(null);
+      setSelectorStage("model");
+      return true;
+    }
+    const effort = normalizeReasoningEffort(nextValue);
+    if (effort) {
+      setSelectedEffort(effort);
+      setSelectorStage("model");
+      return true;
+    }
+    return false;
+  }
+
   return (
     <div className="app-shell">
       {error ? <ErrorBanner error={error} onDismiss={() => setError(null)} /> : null}
@@ -539,7 +822,6 @@ export function AppShell() {
             threads={threads}
             activeThreadId={activeThreadId}
             busy={busy}
-            onCreateThread={() => void handleCreateThread()}
             onRefreshThreads={() => void refreshThreads()}
             onSelectThread={(threadId) => void handleSelectThread(threadId)}
             onOpenSettings={() => setShowSettings((current) => !current)}
@@ -552,9 +834,16 @@ export function AppShell() {
               <ChatView
                 turnState={turnState}
                 items={turnItems}
+                workspacePath={workspacePath}
                 composerValue={composerValue}
+                selectorLabel={selectorLabel}
+                selectorDisplay={selectorDisplay}
+                selectorOptions={selectorOptions}
+                selectorValue={selectorValue}
                 busy={busy}
                 onComposerChange={setComposerValue}
+                onSelectorChange={handleComposerSelectorChange}
+                onCreateThread={() => void handleCreateThread()}
                 onSubmitPrompt={() => void handleSubmitPrompt()}
                 onInterrupt={() => void handleInterruptTurn()}
               />
@@ -567,6 +856,8 @@ export function AppShell() {
             auth={auth}
             busy={busy}
             statusChecking={authStatusChecking}
+            startupChecking={startupAuthCheckPending && authStatusChecking}
+            startupCheckSlow={startupAuthCheckPending && startupAuthCheckSlow}
             onStartLogin={() => void handleStartLogin()}
             onLogoutAndContinue={() => void handleLogoutAndContinue()}
             onRetryStatus={handleRetryStatusCheck}

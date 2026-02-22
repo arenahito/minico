@@ -4,7 +4,6 @@ interface ThreadListPanelProps {
   threads: ThreadSummary[];
   activeThreadId: string | null;
   busy: boolean;
-  onCreateThread: () => void;
   onRefreshThreads: () => void;
   onSelectThread: (threadId: string) => void;
   onOpenSettings: () => void;
@@ -14,7 +13,6 @@ export function ThreadListPanel({
   threads,
   activeThreadId,
   busy,
-  onCreateThread,
   onRefreshThreads,
   onSelectThread,
   onOpenSettings,
@@ -32,28 +30,35 @@ export function ThreadListPanel({
           </button>
         </div>
       </div>
-      <button type="button" className="new-thread-button" onClick={onCreateThread}>
-        + New thread
-      </button>
       <ul className="thread-list" role="listbox" aria-label="thread history">
-        {threads.map((thread) => (
-          <li key={thread.id}>
-            <button
-              type="button"
-              className={`thread-list-item ${
-                thread.id === activeThreadId ? "is-active" : ""
-              }`}
-              onClick={() => onSelectThread(thread.id)}
-              aria-selected={thread.id === activeThreadId}
-            >
-              <span className="thread-title">{thread.preview || "(No preview yet)"}</span>
-              <code>{thread.id}</code>
-            </button>
-          </li>
-        ))}
+        {threads.map((thread) => {
+          const trimmedName = thread.name?.trim() ?? "";
+          const trimmedPreview = thread.preview.trim();
+          const title = trimmedName || trimmedPreview || "(No title yet)";
+          const showSummary =
+            trimmedName.length > 0 &&
+            trimmedPreview.length > 0 &&
+            trimmedPreview !== trimmedName;
+          return (
+            <li key={thread.id}>
+              <button
+                type="button"
+                className={`thread-list-item ${
+                  thread.id === activeThreadId ? "is-active" : ""
+                }`}
+                onClick={() => onSelectThread(thread.id)}
+                aria-selected={thread.id === activeThreadId}
+              >
+                <span className="thread-title">{title}</span>
+                {showSummary ? (
+                  <span className="thread-summary">{trimmedPreview}</span>
+                ) : null}
+              </button>
+            </li>
+          );
+        })}
         {threads.length === 0 ? <li className="thread-empty">No app-server threads yet.</li> : null}
       </ul>
     </aside>
   );
 }
-

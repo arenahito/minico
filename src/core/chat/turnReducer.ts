@@ -3,6 +3,8 @@ import type { SessionPolledEvent } from "./threadService";
 export interface TurnStreamItem {
   id: string;
   itemType: string;
+  role: "agent" | "user";
+  createdAt: number;
   text: string;
   completed: boolean;
 }
@@ -19,6 +21,14 @@ export type TurnAction =
   | { type: "turnStarted"; threadId: string; turnId: string }
   | { type: "itemStarted"; itemId: string; itemType: string }
   | { type: "agentMessageDelta"; itemId: string; delta: string }
+  | { type: "userPromptSubmitted"; threadId: string; itemId: string; text: string }
+  | {
+      type: "hydrateThreadHistory";
+      threadId: string;
+      items: Array<
+        Pick<TurnStreamItem, "id" | "itemType" | "role" | "text" | "completed">
+      >;
+    }
   | { type: "itemCompleted"; itemId: string }
   | { type: "turnCompleted"; threadId: string; turnId: string }
   | { type: "turnInterrupted"; turnId: string }
@@ -31,6 +41,13 @@ export const initialTurnStreamState: TurnStreamState = {
   itemsById: {},
   completedTurnIds: [],
 };
+
+function inferRoleFromItemType(itemType: string): "agent" | "user" {
+  if (itemType.toLowerCase().includes("user")) {
+    return "user";
+  }
+  return "agent";
+}
 
 function ensureItem(
   state: TurnStreamState,
@@ -49,6 +66,8 @@ function ensureItem(
       [itemId]: {
         id: itemId,
         itemType,
+        role: inferRoleFromItemType(itemType),
+        createdAt: Date.now(),
         text: "",
         completed: false,
       },
@@ -72,6 +91,28 @@ export function reduceTurnStream(
         activeThreadId: action.threadId,
         activeTurnId: action.turnId,
       };
+    case "hydrateThreadHistory": {
+      const itemsById: TurnStreamState["itemsById"] = {};
+      const orderedItemIds: string[] = [];
+      const now = Date.now();
+      action.items.forEach((item, index) => {
+        if (itemsById[item.id]) {
+          return;
+        }
+        orderedItemIds.push(item.id);
+        itemsById[item.id] = {
+          ...item,
+          createdAt: now + index,
+        };
+      });
+      return {
+        activeThreadId: action.threadId,
+        activeTurnId: null,
+        orderedItemIds,
+        itemsById,
+        completedTurnIds: [],
+      };
+    }
     case "itemStarted":
       return ensureItem(state, action.itemId, action.itemType);
     case "agentMessageDelta": {
@@ -88,6 +129,26 @@ export function reduceTurnStream(
         },
       };
     }
+    case "userPromptSubmitted":
+      if (state.itemsById[action.itemId]) {
+        return state;
+      }
+      return {
+        ...state,
+        activeThreadId: action.threadId,
+        orderedItemIds: [...state.orderedItemIds, action.itemId],
+        itemsById: {
+          ...state.itemsById,
+          [action.itemId]: {
+            id: action.itemId,
+            itemType: "userMessage",
+            role: "user",
+            createdAt: Date.now(),
+            text: action.text,
+            completed: true,
+          },
+        },
+      };
     case "itemCompleted": {
       const existing = state.itemsById[action.itemId];
       if (!existing) {

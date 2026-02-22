@@ -1,5 +1,6 @@
 use std::time::Duration;
 use std::{fs, time::SystemTime};
+use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -15,6 +16,7 @@ use super::workspace::resolve_active_cwd;
 #[serde(rename_all = "camelCase")]
 pub struct ThreadSummary {
     pub id: String,
+    pub name: Option<String>,
     pub preview: String,
 }
 
@@ -26,11 +28,39 @@ pub struct ThreadListResult {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ModelSummary {
+    pub id: String,
+    pub model: String,
+    pub display_name: String,
+    pub is_default: bool,
+    pub default_reasoning_effort: Option<String>,
+    pub supported_reasoning_efforts: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelListResult {
+    pub models: Vec<ModelSummary>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ThreadSessionResult {
     pub thread_id: String,
     pub cwd: String,
     pub workspace_fallback_used: bool,
     pub workspace_warning: Option<String>,
+    pub history_items: Vec<ThreadHistoryItem>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ThreadHistoryItem {
+    pub id: String,
+    pub item_type: String,
+    pub role: String,
+    pub text: String,
+    pub completed: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -93,6 +123,10 @@ fn parse_thread_list(payload: &Value) -> ThreadListResult {
                 .iter()
                 .filter_map(|item| {
                     let id = item.get("id").and_then(Value::as_str)?;
+                    let name = item
+                        .get("name")
+                        .and_then(Value::as_str)
+                        .map(ToString::to_string);
                     let preview = item
                         .get("preview")
                         .and_then(Value::as_str)
@@ -100,6 +134,7 @@ fn parse_thread_list(payload: &Value) -> ThreadListResult {
                         .to_string();
                     Some(ThreadSummary {
                         id: id.to_string(),
+                        name,
                         preview,
                     })
                 })
@@ -107,6 +142,147 @@ fn parse_thread_list(payload: &Value) -> ThreadListResult {
         })
         .unwrap_or_default();
     ThreadListResult { threads }
+}
+
+fn parse_model_list(payload: &Value) -> ModelListResult {
+    let models = payload
+        .get("data")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| {
+                    let id = item.get("id").and_then(Value::as_str)?;
+                    let model = item.get("model").and_then(Value::as_str)?;
+                    let display_name = item
+                        .get("displayName")
+                        .and_then(Value::as_str)
+                        .unwrap_or(model)
+                        .to_string();
+                    let is_default = item
+                        .get("isDefault")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false);
+                    let default_reasoning_effort = item
+                        .get("defaultReasoningEffort")
+                        .and_then(Value::as_str)
+                        .map(ToString::to_string);
+                    let supported_reasoning_efforts = item
+                        .get("supportedReasoningEfforts")
+                        .and_then(Value::as_array)
+                        .map(|efforts| {
+                            efforts
+                                .iter()
+                                .filter_map(|effort| {
+                                    effort
+                                        .get("reasoningEffort")
+                                        .and_then(Value::as_str)
+                                        .map(ToString::to_string)
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    Some(ModelSummary {
+                        id: id.to_string(),
+                        model: model.to_string(),
+                        display_name,
+                        is_default,
+                        default_reasoning_effort,
+                        supported_reasoning_efforts,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    ModelListResult { models }
+}
+
+fn user_content_text(content: &Value) -> String {
+    let Some(parts) = content.as_array() else {
+        return String::new();
+    };
+    let lines: Vec<String> = parts
+        .iter()
+        .filter_map(|part| {
+            let kind = part.get("type").and_then(Value::as_str)?;
+            if kind != "text" {
+                return None;
+            }
+            part.get("text")
+                .and_then(Value::as_str)
+                .map(ToString::to_string)
+        })
+        .collect();
+    lines.join("\n")
+}
+
+fn parse_thread_history_items(payload: &Value) -> Vec<ThreadHistoryItem> {
+    let Some(turns) = payload
+        .get("thread")
+        .and_then(|thread| thread.get("turns"))
+        .and_then(Value::as_array)
+    else {
+        return Vec::new();
+    };
+
+    let mut items = Vec::new();
+    let mut seen_ids = HashSet::new();
+    for turn in turns {
+        let Some(turn_items) = turn.get("items").and_then(Value::as_array) else {
+            continue;
+        };
+        for item in turn_items {
+            let Some(id) = item.get("id").and_then(Value::as_str) else {
+                continue;
+            };
+            if seen_ids.contains(id) {
+                continue;
+            }
+            let Some(item_type) = item.get("type").and_then(Value::as_str) else {
+                continue;
+            };
+            let parsed = match item_type {
+                "userMessage" => {
+                    let text = user_content_text(item.get("content").unwrap_or(&Value::Null));
+                    Some(ThreadHistoryItem {
+                        id: id.to_string(),
+                        item_type: item_type.to_string(),
+                        role: "user".to_string(),
+                        text: if text.trim().is_empty() {
+                            "(non-text input)".to_string()
+                        } else {
+                            text
+                        },
+                        completed: true,
+                    })
+                }
+                "agentMessage" => {
+                    let text = item
+                        .get("text")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string();
+                    if text.trim().is_empty() {
+                        None
+                    } else {
+                        Some(ThreadHistoryItem {
+                            id: id.to_string(),
+                            item_type: item_type.to_string(),
+                            role: "agent".to_string(),
+                            text,
+                            completed: true,
+                        })
+                    }
+                }
+                _ => None,
+            };
+            if let Some(parsed_item) = parsed {
+                seen_ids.insert(id.to_string());
+                items.push(parsed_item);
+            }
+        }
+    }
+    items
 }
 
 #[tauri::command]
@@ -163,6 +339,15 @@ pub async fn thread_list(
 }
 
 #[tauri::command]
+pub async fn model_list(state: State<'_, SessionRuntimeState>) -> Result<ModelListResult, String> {
+    run_with_facade(&state, |facade| {
+        let payload = facade.model_list().map_err(|error| error.to_string())?;
+        Ok(parse_model_list(&payload))
+    })
+    .await
+}
+
+#[tauri::command]
 pub async fn thread_start(
     state: State<'_, SessionRuntimeState>,
 ) -> Result<ThreadSessionResult, String> {
@@ -178,6 +363,7 @@ pub async fn thread_start(
             cwd: cwd.cwd.clone(),
             workspace_fallback_used: cwd.fallback_used,
             workspace_warning: cwd.warning.clone(),
+            history_items: vec![],
         })
     })
     .await
@@ -194,11 +380,13 @@ pub async fn thread_resume(
             .thread_resume(&thread_id)
             .map_err(|error| error.to_string())?;
         let resolved_thread_id = extract_thread_id(&payload).unwrap_or_else(|| thread_id.clone());
+        let history_items = parse_thread_history_items(&payload);
         Ok(ThreadSessionResult {
             thread_id: resolved_thread_id,
             cwd: cwd.cwd.clone(),
             workspace_fallback_used: cwd.fallback_used,
             workspace_warning: cwd.warning.clone(),
+            history_items,
         })
     })
     .await
@@ -209,6 +397,8 @@ pub async fn turn_start(
     state: State<'_, SessionRuntimeState>,
     thread_id: String,
     text: String,
+    model: Option<String>,
+    effort: Option<String>,
 ) -> Result<TurnStartResult, String> {
     let trimmed = text.trim().to_string();
     if trimmed.is_empty() {
@@ -218,7 +408,13 @@ pub async fn turn_start(
     run_with_facade(&state, move |facade| {
         let cwd = resolve_active_cwd()?;
         let payload = facade
-            .turn_start(&thread_id, &trimmed, &cwd.cwd)
+            .turn_start(
+                &thread_id,
+                &trimmed,
+                model.as_deref(),
+                effort.as_deref(),
+                &cwd.cwd,
+            )
             .map_err(|error| error.to_string())?;
         Ok(TurnStartResult {
             thread_id,
@@ -347,7 +543,9 @@ mod tests {
     use tempfile::TempDir;
 
     use super::{
-        extract_thread_id, extract_turn_id, filter_diagnostics_lines, parse_thread_list,
+        extract_thread_id, extract_turn_id, filter_diagnostics_lines, parse_model_list,
+        parse_thread_history_items,
+        parse_thread_list,
         write_diagnostics_log,
     };
     use crate::core::config::LogLevel;
@@ -376,13 +574,87 @@ mod tests {
     fn parses_thread_list_data() {
         let parsed = parse_thread_list(&json!({
             "data": [
-                { "id": "thread-a", "preview": "alpha" },
+                { "id": "thread-a", "name": "Title A", "preview": "alpha" },
                 { "id": "thread-b", "preview": "beta" }
             ]
         }));
         assert_eq!(parsed.threads.len(), 2);
         assert_eq!(parsed.threads[0].id, "thread-a");
+        assert_eq!(parsed.threads[0].name.as_deref(), Some("Title A"));
         assert_eq!(parsed.threads[1].preview, "beta");
+        assert_eq!(parsed.threads[1].name, None);
+    }
+
+    #[test]
+    fn parses_model_list_data() {
+        let parsed = parse_model_list(&json!({
+            "data": [
+                {
+                    "id": "model-a",
+                    "model": "gpt-5",
+                    "displayName": "GPT-5",
+                    "isDefault": true,
+                    "defaultReasoningEffort": "medium",
+                    "supportedReasoningEfforts": [
+                        { "reasoningEffort": "low", "description": "low" },
+                        { "reasoningEffort": "medium", "description": "medium" },
+                        { "reasoningEffort": "high", "description": "high" }
+                    ]
+                }
+            ]
+        }));
+        assert_eq!(parsed.models.len(), 1);
+        assert_eq!(parsed.models[0].model, "gpt-5");
+        assert_eq!(parsed.models[0].default_reasoning_effort.as_deref(), Some("medium"));
+        assert_eq!(parsed.models[0].supported_reasoning_efforts, vec!["low", "medium", "high"]);
+    }
+
+    #[test]
+    fn parses_thread_history_items_from_resume_payload() {
+        let parsed = parse_thread_history_items(&json!({
+            "thread": {
+                "turns": [
+                    {
+                        "id": "turn-1",
+                        "status": "completed",
+                        "items": [
+                            {
+                                "id": "item-user-1",
+                                "type": "userMessage",
+                                "content": [
+                                    { "type": "text", "text": "hello" }
+                                ]
+                            },
+                            {
+                                "id": "item-agent-1",
+                                "type": "agentMessage",
+                                "text": "world"
+                            },
+                            {
+                                "id": "item-plan-1",
+                                "type": "plan",
+                                "text": "internal plan"
+                            },
+                            {
+                                "id": "item-reasoning-1",
+                                "type": "reasoning",
+                                "summary": [
+                                    "internal reasoning"
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        }));
+
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[0].role, "user");
+        assert_eq!(parsed[0].text, "hello");
+        assert_eq!(parsed[1].role, "agent");
+        assert_eq!(parsed[1].text, "world");
+        assert!(parsed.iter().all(|item| item.item_type != "plan"));
+        assert!(parsed.iter().all(|item| item.item_type != "reasoning"));
     }
 
     #[test]

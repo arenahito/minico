@@ -2,11 +2,41 @@ import { invoke } from "@tauri-apps/api/core";
 
 export interface ThreadSummary {
   id: string;
+  name: string | null;
   preview: string;
+}
+
+export interface ThreadHistoryItem {
+  id: string;
+  itemType: string;
+  role: "agent" | "user";
+  text: string;
+  completed: boolean;
+}
+
+export type ReasoningEffort =
+  | "none"
+  | "minimal"
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh";
+
+export interface ModelSummary {
+  id: string;
+  model: string;
+  displayName: string;
+  isDefault: boolean;
+  defaultReasoningEffort: ReasoningEffort | null;
+  supportedReasoningEfforts: ReasoningEffort[];
 }
 
 export interface ThreadListResult {
   threads: ThreadSummary[];
+}
+
+export interface ModelListResult {
+  models: ModelSummary[];
 }
 
 export interface ThreadSessionResult {
@@ -14,6 +44,7 @@ export interface ThreadSessionResult {
   cwd: string;
   workspaceFallbackUsed: boolean;
   workspaceWarning: string | null;
+  historyItems: ThreadHistoryItem[];
 }
 
 export interface TurnStartResult {
@@ -57,21 +88,36 @@ export async function listThreads(): Promise<ThreadSummary[]> {
   return response.threads;
 }
 
+export async function listModels(): Promise<ModelSummary[]> {
+  const response = await invoke<ModelListResult>("model_list");
+  return response.models;
+}
+
 export async function startThread(): Promise<ThreadSessionResult> {
-  return invoke<ThreadSessionResult>("thread_start");
+  const response = await invoke<ThreadSessionResult>("thread_start");
+  return {
+    ...response,
+    historyItems: response.historyItems ?? [],
+  };
 }
 
 export async function resumeThread(
   threadId: string,
 ): Promise<ThreadSessionResult> {
-  return invoke<ThreadSessionResult>("thread_resume", { threadId });
+  const response = await invoke<ThreadSessionResult>("thread_resume", { threadId });
+  return {
+    ...response,
+    historyItems: response.historyItems ?? [],
+  };
 }
 
 export async function startTurn(
   threadId: string,
   text: string,
+  model: string | null,
+  effort: ReasoningEffort | null,
 ): Promise<TurnStartResult> {
-  return invoke<TurnStartResult>("turn_start", { threadId, text });
+  return invoke<TurnStartResult>("turn_start", { threadId, text, model, effort });
 }
 
 export async function interruptTurn(
@@ -80,4 +126,3 @@ export async function interruptTurn(
 ): Promise<void> {
   await invoke("turn_interrupt", { threadId, turnId });
 }
-

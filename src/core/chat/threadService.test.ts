@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   interruptTurn,
+  listModels,
   listThreads,
   pollSessionEvents,
   resumeThread,
@@ -32,15 +33,58 @@ describe("threadService", () => {
   it("loads thread list through backend command", async () => {
     mockedInvoke.mockResolvedValueOnce({
       threads: [
-        { id: "t1", preview: "hello" },
-        { id: "t2", preview: "world" },
+        { id: "t1", name: "Title 1", preview: "hello" },
+        { id: "t2", name: null, preview: "world" },
       ],
     });
     await expect(listThreads()).resolves.toEqual([
-      { id: "t1", preview: "hello" },
-      { id: "t2", preview: "world" },
+      { id: "t1", name: "Title 1", preview: "hello" },
+      { id: "t2", name: null, preview: "world" },
     ]);
     expect(mockedInvoke).toHaveBeenCalledWith("thread_list");
+  });
+
+  it("loads model list through backend command", async () => {
+    mockedInvoke.mockResolvedValueOnce({
+      models: [
+        {
+          id: "m1",
+          model: "gpt-5",
+          displayName: "GPT-5",
+          isDefault: true,
+          defaultReasoningEffort: "medium",
+          supportedReasoningEfforts: ["low", "medium", "high"],
+        },
+        {
+          id: "m2",
+          model: "gpt-5-mini",
+          displayName: "GPT-5 mini",
+          isDefault: false,
+          defaultReasoningEffort: "low",
+          supportedReasoningEfforts: ["minimal", "low", "medium"],
+        },
+      ],
+    });
+
+    await expect(listModels()).resolves.toEqual([
+      {
+        id: "m1",
+        model: "gpt-5",
+        displayName: "GPT-5",
+        isDefault: true,
+        defaultReasoningEffort: "medium",
+        supportedReasoningEfforts: ["low", "medium", "high"],
+      },
+      {
+        id: "m2",
+        model: "gpt-5-mini",
+        displayName: "GPT-5 mini",
+        isDefault: false,
+        defaultReasoningEffort: "low",
+        supportedReasoningEfforts: ["minimal", "low", "medium"],
+      },
+    ]);
+    expect(mockedInvoke).toHaveBeenCalledWith("model_list");
   });
 
   it("starts and resumes thread", async () => {
@@ -49,12 +93,14 @@ describe("threadService", () => {
       cwd: "C:/workspace",
       workspaceFallbackUsed: false,
       workspaceWarning: null,
+      historyItems: [],
     });
     mockedInvoke.mockResolvedValueOnce({
       threadId: "t-existing",
       cwd: "C:/workspace",
       workspaceFallbackUsed: false,
       workspaceWarning: null,
+      historyItems: [],
     });
 
     await startThread();
@@ -76,12 +122,14 @@ describe("threadService", () => {
     });
     mockedInvoke.mockResolvedValueOnce(undefined);
 
-    await startTurn("t1", "hello");
+    await startTurn("t1", "hello", "gpt-5", "medium");
     await interruptTurn("t1", "turn-1");
 
     expect(mockedInvoke).toHaveBeenNthCalledWith(1, "turn_start", {
       threadId: "t1",
       text: "hello",
+      model: "gpt-5",
+      effort: "medium",
     });
     expect(mockedInvoke).toHaveBeenNthCalledWith(2, "turn_interrupt", {
       threadId: "t1",

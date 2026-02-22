@@ -59,6 +59,24 @@ describe("turnReducer", () => {
     const items = orderedTurnItems(completed);
     expect(items).toHaveLength(1);
     expect(items[0].text).toBe("hello");
+    expect(items[0].role).toBe("agent");
+    expect(typeof items[0].createdAt).toBe("number");
+    expect(items[0].completed).toBe(true);
+  });
+
+  it("adds submitted user prompt as completed user item", () => {
+    const next = reduceTurnStream(initialTurnStreamState, {
+      type: "userPromptSubmitted",
+      threadId: "thread-1",
+      itemId: "local-user-1",
+      text: "please summarize this",
+    });
+
+    const items = orderedTurnItems(next);
+    expect(items).toHaveLength(1);
+    expect(items[0].role).toBe("user");
+    expect(items[0].text).toBe("please summarize this");
+    expect(typeof items[0].createdAt).toBe("number");
     expect(items[0].completed).toBe(true);
   });
 
@@ -75,5 +93,37 @@ describe("turnReducer", () => {
     });
     expect(next.activeTurnId).toBeNull();
     expect(next.completedTurnIds).toContain("turn-1");
+  });
+
+  it("hydrates thread history on resume", () => {
+    const next = reduceTurnStream(initialTurnStreamState, {
+      type: "hydrateThreadHistory",
+      threadId: "thread-9",
+      items: [
+        {
+          id: "u1",
+          itemType: "userMessage",
+          role: "user",
+          text: "hello",
+          completed: true,
+        },
+        {
+          id: "a1",
+          itemType: "agentMessage",
+          role: "agent",
+          text: "world",
+          completed: true,
+        },
+      ],
+    });
+
+    expect(next.activeThreadId).toBe("thread-9");
+    expect(next.activeTurnId).toBeNull();
+    const items = orderedTurnItems(next);
+    expect(items).toHaveLength(2);
+    expect(items[0].text).toBe("hello");
+    expect(items[1].text).toBe("world");
+    expect(items[0].completed).toBe(true);
+    expect(items[1].completed).toBe(true);
   });
 });

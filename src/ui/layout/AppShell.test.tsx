@@ -106,7 +106,14 @@ describe("AppShell", () => {
       }
       if (command === "thread_list") {
         return {
-          threads: [{ id: "thread-1", preview: "demo thread" }],
+          threads: [{ id: "thread-1", name: null, preview: "demo thread" }],
+        };
+      }
+      if (command === "workspace_resolve_active_cwd") {
+        return {
+          cwd: "C:/workspace/demo",
+          fallbackUsed: false,
+          warning: null,
         };
       }
       if (command === "session_poll_events") {
@@ -131,8 +138,8 @@ describe("AppShell", () => {
     const { unmount } = render(<AppShell />);
 
     await waitFor(() => {
-      expect(screen.getByText("Active turn:")).toBeVisible();
-      expect(screen.getByText("turn-1")).toBeVisible();
+      expect(screen.getByText("C:/workspace/demo")).toBeVisible();
+      expect(screen.getByLabelText("minico thinking indicator")).toBeVisible();
     });
 
     unmount();
@@ -183,6 +190,13 @@ describe("AppShell", () => {
           loginId: "login-1",
         };
       }
+      if (command === "workspace_resolve_active_cwd") {
+        return {
+          cwd: "C:/workspace/demo",
+          fallbackUsed: false,
+          warning: null,
+        };
+      }
       if (command === "thread_list") {
         return { threads: [] };
       }
@@ -215,6 +229,13 @@ describe("AppShell", () => {
       }
       if (command === "thread_list") {
         return { threads: [] };
+      }
+      if (command === "workspace_resolve_active_cwd") {
+        return {
+          cwd: "C:/workspace/demo",
+          fallbackUsed: false,
+          warning: null,
+        };
       }
       if (command === "session_poll_events") {
         pollCount += 1;
@@ -254,6 +275,169 @@ describe("AppShell", () => {
       expect(mockedInvoke).toHaveBeenCalledWith("approval_respond", {
         requestId: 99,
         decision: "cancel",
+      });
+    });
+  });
+
+  it("hydrates chat items when selecting a thread", async () => {
+    const user = userEvent.setup();
+    mockedInvoke.mockImplementation(async (command, args) => {
+      if (command === "auth_read_status") {
+        return {
+          state: "loggedIn",
+          accountEmail: "demo@example.com",
+          requiresOpenaiAuth: false,
+          rawAuthMode: "chatgpt",
+          message: null,
+        };
+      }
+      if (command === "thread_list") {
+        return {
+          threads: [
+            { id: "thread-1", name: null, preview: "first" },
+            { id: "thread-2", name: null, preview: "second" },
+          ],
+        };
+      }
+      if (command === "workspace_resolve_active_cwd") {
+        return {
+          cwd: "C:/workspace/demo",
+          fallbackUsed: false,
+          warning: null,
+        };
+      }
+      if (command === "thread_resume") {
+        expect(args).toEqual({ threadId: "thread-2" });
+        return {
+          threadId: "thread-2",
+          cwd: "C:/workspace/demo",
+          workspaceFallbackUsed: false,
+          workspaceWarning: null,
+          historyItems: [
+            {
+              id: "item-user-1",
+              itemType: "userMessage",
+              role: "user",
+              text: "question",
+              completed: true,
+            },
+            {
+              id: "item-agent-1",
+              itemType: "agentMessage",
+              role: "agent",
+              text: "answer",
+              completed: true,
+            },
+          ],
+        };
+      }
+      if (command === "model_list") {
+        return { models: [] };
+      }
+      if (command === "session_poll_events") {
+        return [];
+      }
+      return undefined;
+    });
+
+    render(<AppShell />);
+    await waitFor(() => {
+      expect(screen.getByText("second")).toBeVisible();
+    });
+
+    await user.click(screen.getByRole("button", { name: /second/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("question")).toBeVisible();
+      expect(screen.getByText("answer")).toBeVisible();
+    });
+  });
+
+  it("submits turn with selected model and reasoning effort", async () => {
+    const user = userEvent.setup();
+    mockedInvoke.mockImplementation(async (command) => {
+      if (command === "auth_read_status") {
+        return {
+          state: "loggedIn",
+          accountEmail: "demo@example.com",
+          requiresOpenaiAuth: false,
+          rawAuthMode: "chatgpt",
+          message: null,
+        };
+      }
+      if (command === "thread_list") {
+        return { threads: [] };
+      }
+      if (command === "model_list") {
+        return {
+          models: [
+            {
+              id: "m1",
+              model: "gpt-5",
+              displayName: "GPT-5",
+              isDefault: true,
+              defaultReasoningEffort: "medium",
+              supportedReasoningEfforts: ["low", "medium", "high"],
+            },
+            {
+              id: "m2",
+              model: "gpt-5-mini",
+              displayName: "GPT-5 mini",
+              isDefault: false,
+              defaultReasoningEffort: "low",
+              supportedReasoningEfforts: ["minimal", "low", "high"],
+            },
+          ],
+        };
+      }
+      if (command === "workspace_resolve_active_cwd") {
+        return {
+          cwd: "C:/workspace/demo",
+          fallbackUsed: false,
+          warning: null,
+        };
+      }
+      if (command === "thread_start") {
+        return {
+          threadId: "thread-1",
+          cwd: "C:/workspace/demo",
+          workspaceFallbackUsed: false,
+          workspaceWarning: null,
+        };
+      }
+      if (command === "turn_start") {
+        return {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          cwd: "C:/workspace/demo",
+          workspaceFallbackUsed: false,
+          workspaceWarning: null,
+        };
+      }
+      if (command === "session_poll_events") {
+        return [];
+      }
+      return undefined;
+    });
+
+    render(<AppShell />);
+    await waitFor(() => {
+      expect(screen.getByText("C:/workspace/demo")).toBeVisible();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Select model" }));
+    await user.click(screen.getByRole("option", { name: "GPT-5 mini" }));
+    await user.click(screen.getByRole("option", { name: "high" }));
+    expect(screen.getByText("gpt-5-mini / high")).toBeVisible();
+    await user.type(screen.getByRole("textbox"), "hello");
+    await user.click(screen.getByRole("button", { name: "Send prompt" }));
+
+    await waitFor(() => {
+      expect(mockedInvoke).toHaveBeenCalledWith("turn_start", {
+        threadId: "thread-1",
+        text: "hello",
+        model: "gpt-5-mini",
+        effort: "high",
       });
     });
   });

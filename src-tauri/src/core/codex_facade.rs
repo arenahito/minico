@@ -158,20 +158,39 @@ impl<R: RpcRuntime> CodexFacade<R> {
     }
 
     pub fn thread_list_app_server_only(&mut self) -> Result<Value, CodexFacadeError> {
-        self.request_json("thread/list", json!({ "sourceKinds": ["appServer"] }))
+        self.request_json(
+            "thread/list",
+            json!({ "sourceKinds": ["appServer", "unknown"] }),
+        )
+    }
+
+    pub fn model_list(&mut self) -> Result<Value, CodexFacadeError> {
+        self.request_json("model/list", json!({}))
     }
 
     pub fn turn_start(
         &mut self,
         thread_id: &str,
         text: &str,
+        model: Option<&str>,
+        effort: Option<&str>,
         cwd: &str,
     ) -> Result<Value, CodexFacadeError> {
+        let model = model
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string);
+        let effort = effort
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string);
         self.request_json(
             "turn/start",
             json!({
                 "threadId": thread_id,
                 "cwd": cwd,
+                "model": model,
+                "effort": effort,
                 "input": [
                     { "type": "text", "text": text }
                 ]

@@ -4,6 +4,8 @@ interface LoginViewProps {
   auth: AuthMachineState;
   busy: boolean;
   statusChecking: boolean;
+  startupChecking: boolean;
+  startupCheckSlow: boolean;
   onStartLogin: () => void;
   onLogoutAndContinue: () => void;
   onRetryStatus: () => void;
@@ -13,32 +15,33 @@ export function LoginView({
   auth,
   busy,
   statusChecking,
+  startupChecking,
+  startupCheckSlow,
   onStartLogin,
   onLogoutAndContinue,
   onRetryStatus,
 }: LoginViewProps) {
+  if (startupChecking) {
+    return (
+      <section className="login-card" aria-label="startup auth checking">
+        <h2>Preparing minico</h2>
+        <p>Checking app-server connectivity and account status.</p>
+        {startupCheckSlow ? (
+          <p className="form-warning">
+            This is taking longer than usual. minico will continue automatically
+            when the check completes.
+          </p>
+        ) : (
+          <p className="auth-progress">Please wait a moment...</p>
+        )}
+      </section>
+    );
+  }
+
   const actionDisabled = busy || statusChecking;
   const statusMessage = statusChecking
     ? "Checking account status in the background..."
     : null;
-
-  if (auth.view === "checking") {
-    return (
-      <section className="login-card" aria-label="auth checking">
-        <h2>Login required</h2>
-        <p>Account state sync is running in the background.</p>
-        {statusMessage ? <p aria-live="polite">{statusMessage}</p> : null}
-        <div className="settings-actions">
-          <button type="button" onClick={onStartLogin} disabled={actionDisabled}>
-            {busy ? "Starting..." : "Continue with ChatGPT"}
-          </button>
-          <button type="button" onClick={onRetryStatus} disabled={actionDisabled}>
-            {statusChecking ? "Checking..." : "Retry status check"}
-          </button>
-        </div>
-      </section>
-    );
-  }
 
   if (auth.view === "unsupportedApiKey") {
     return (
