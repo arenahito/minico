@@ -5,6 +5,7 @@ import {
   saveSettings,
   validateCodexPath,
 } from "../../core/settings/store";
+import { exportDiagnosticsLogs } from "../../core/diagnostics/client";
 import {
   loadDefaultWorkspacePath,
   resolveActiveCwd,
@@ -41,6 +42,9 @@ export function SettingsView() {
     null,
   );
   const [workspaceWarning, setWorkspaceWarning] = useState<string | null>(null);
+  const [diagnosticsExportPath, setDiagnosticsExportPath] = useState<string | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -117,6 +121,16 @@ export function SettingsView() {
       setError(String(saveError));
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function onExportDiagnostics() {
+    setError(null);
+    try {
+      const exported = await exportDiagnosticsLogs();
+      setDiagnosticsExportPath(exported.logPath);
+    } catch (exportError) {
+      setError(String(exportError));
     }
   }
 
@@ -197,6 +211,13 @@ export function SettingsView() {
           >
             Validate path
           </button>
+          <button
+            type="button"
+            onClick={() => void onExportDiagnostics()}
+            disabled={saving}
+          >
+            Export diagnostics
+          </button>
           <button type="submit" disabled={saving}>
             {saving ? "Saving..." : "Save settings"}
           </button>
@@ -212,6 +233,11 @@ export function SettingsView() {
       </p>
       {validation && !validation.valid && validation.message ? (
         <p className="form-error">{validation.message}</p>
+      ) : null}
+      {diagnosticsExportPath ? (
+        <p>
+          Diagnostics log exported: <strong>{diagnosticsExportPath}</strong>
+        </p>
       ) : null}
       {workspaceWarning ? <p className="form-warning">{workspaceWarning}</p> : null}
       {error ? <p className="form-error">{error}</p> : null}

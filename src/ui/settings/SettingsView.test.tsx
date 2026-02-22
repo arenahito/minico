@@ -14,6 +14,7 @@ const saveSettings = vi.fn();
 const validateCodexPath = vi.fn();
 const loadDefaultWorkspacePath = vi.fn();
 const resolveActiveCwd = vi.fn();
+const exportDiagnosticsLogs = vi.fn();
 
 vi.mock("../../core/settings/store", () => ({
   loadSettings: (...args: unknown[]) => loadSettings(...args),
@@ -25,6 +26,10 @@ vi.mock("../../core/workspace/workspaceStore", () => ({
   loadDefaultWorkspacePath: (...args: unknown[]) =>
     loadDefaultWorkspacePath(...args),
   resolveActiveCwd: (...args: unknown[]) => resolveActiveCwd(...args),
+}));
+
+vi.mock("../../core/diagnostics/client", () => ({
+  exportDiagnosticsLogs: (...args: unknown[]) => exportDiagnosticsLogs(...args),
 }));
 
 const snapshot: SettingsSnapshot = {
@@ -59,6 +64,10 @@ describe("SettingsView", () => {
     });
     validateCodexPath.mockResolvedValue({ valid: true, message: null });
     saveSettings.mockResolvedValue(snapshot);
+    exportDiagnosticsLogs.mockResolvedValue({
+      logPath: "C:/Users/test/.minico/logs/diagnostics.log",
+      lineCount: 0,
+    });
   });
 
   it("loads settings at mount", async () => {
@@ -145,5 +154,17 @@ describe("SettingsView", () => {
 
     const savedConfig = saveSettings.mock.calls[0]?.[0];
     expect(savedConfig.workspace.lastPath).toBe("C:/Users/test/.minico/workspace");
+  });
+
+  it("exports diagnostics log path", async () => {
+    render(<SettingsView />);
+    await screen.findByRole("heading", { level: 2, name: "Settings" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Export diagnostics" }));
+
+    await waitFor(() => {
+      expect(exportDiagnosticsLogs).toHaveBeenCalledTimes(1);
+      expect(screen.getByText(/Diagnostics log exported:/)).toBeVisible();
+    });
   });
 });

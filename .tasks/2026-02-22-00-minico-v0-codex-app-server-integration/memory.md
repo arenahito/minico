@@ -193,3 +193,103 @@ cmd /c rmdir /s /q "_bootstrap"
 **Resolution**: Updated monitor mapping to prefer `monitor.workArea.position/size` (with fallback to full bounds) before invoking `window_restore_placement`, and extended the lifecycle test to assert this mapping.
 
 **Scope**: `task-specific`
+
+## B3: Implement ChatGPT-Only Authentication State Machine
+
+### Auth State: Re-check account status immediately after login completion notification
+
+**Context**: `account/login/completed` can arrive before an `account/updated` notification, depending on app-server timing.
+
+**Problem**: If UI only moved to a transient `checking` state and waited for `account/updated`, login flow could stall even after successful browser OAuth.
+
+**Resolution**: Added an explicit `auth_read_status` re-fetch when `account/login/completed` indicates success. This guarantees deterministic transition to `loggedIn`/`loginRequired` without requiring a second notification.
+
+**Scope**: `codebase`
+
+### Policy Guard: API-key auth must be blocked with an explicit logout recovery path
+
+**Context**: Shared Codex home (`homeIsolation=false`) can expose existing API-key sessions created by CLI/IDE.
+
+**Problem**: Treating any authenticated account as valid would violate the product policy (ChatGPT OAuth only).
+
+**Resolution**: Added backend auth mapping (`auth_read_status`) and frontend `LoginView` branch for `unsupportedApiKey`, with a `auth_logout_and_read` action that returns the user to ChatGPT login flow.
+
+**Scope**: `codebase`
+
+## B4: Implement Thread/Turn Orchestration and Streaming Model
+
+### Event Loop: Prevent overlapping poll calls when backend latency spikes
+
+**Context**: Session polling runs on an interval and calls `session_poll_events`.
+
+**Problem**: Without an in-flight guard, slow responses can overlap with the next interval tick, causing duplicated processing and racey UI state transitions.
+
+**Resolution**: Added `pollInFlightRef` guard in `AppShell` so only one poll request can execute at a time. Later ticks are skipped until the active poll resolves.
+
+**Scope**: `codebase`
+
+### Reducer Safety: Enforce strict payload guards for app-server notifications
+
+**Context**: Notification payloads are dynamic JSON and can be malformed during version mismatch or transport corruption.
+
+**Problem**: Converting unknown fields with `String(...)` silently accepts invalid types and pollutes reducer state.
+
+**Resolution**: Tightened type guards in `eventToTurnAction` to require exact string fields (`threadId`, `turn.id`, `item.id`, `delta`) and return `null` for malformed payloads. Added malformed-input unit tests.
+
+**Scope**: `codebase`
+
+## F1: Build Core UI Screens and Session Wiring
+
+### Session Wiring: Keep UI modular by splitting command wrappers, state machines, and presentational components
+
+**Context**: End-to-end V0 flow spans login, thread list, streaming chat, settings, and error banner behavior.
+
+**Problem**: Embedding backend invoke calls directly in view components makes branch behavior hard to test and brittle under protocol changes.
+
+**Resolution**: Separated concerns into `authMachine`, `threadService`, `turnReducer`, and presentational components (`LoginView`, `ThreadListPanel`, `ChatView`). `AppShell` orchestrates flows while tests focus on module-specific branches.
+
+**Scope**: `codebase`
+
+## F2: Implement Approval Dialogs and Decision Response Bridge
+
+### Reliability: Never drop pending approval when both response and fallback fail
+
+**Context**: Approval decisions are safety-critical and must be correlated to server request IDs.
+
+**Problem**: Clearing local approval queue unconditionally in `finally` can lose pending requests if both primary response and fallback cancel fail.
+
+**Resolution**: Queue entries are now removed only after a confirmed successful send (`accept/decline/...` or fallback `cancel`). On dual-failure, request stays visible so user can retry.
+
+**Scope**: `codebase`
+
+### Fallback Rule: Auto-cancel only when dialog presentation is impossible
+
+**Context**: Approval may arrive while app is not in a state that can present the dialog (e.g., not logged in).
+
+**Problem**: Ignoring request violates protocol expectations; immediate dequeue on failed cancel violates explicit consent guarantees.
+
+**Resolution**: Added auth-gated auto-cancel path with in-flight dedupe. Auto-cancel removes queue entry only when backend send succeeds.
+
+**Scope**: `task-specific`
+
+## D1: Add Diagnostics, Error UX, and End-to-End Verification Guide
+
+### Diagnostics: Apply stored log level at export time for predictable bug report payloads
+
+**Context**: V0 stores `diagnostics.logLevel` in settings and exposes diagnostics export from the settings screen.
+
+**Problem**: Exporting raw stderr unfiltered makes log-level selection meaningless and breaks operator expectations.
+
+**Resolution**: Added `filter_diagnostics_lines` in Rust export path (`diagnostics_export_logs`) and mapped behavior by configured level (`error`, `warn`, `info`, `debug`). Export writes logs under `.minico/logs/diagnostics-<timestamp>.log`.
+
+**Scope**: `codebase`
+
+### Error UX: Standardize mapping from technical failures to actionable user guidance
+
+**Context**: Runtime failures span spawn issues, auth expiry, overload, and unknown transport faults.
+
+**Problem**: Raw error strings are hard to act on and inconsistent across screens.
+
+**Resolution**: Added `errorMapper` + `ErrorBanner` with stable error codes, concise titles, and concrete recovery actions. Documented mappings and full E2E verification in `docs/v0/error-catalog.md` and `docs/v0/verification.md`.
+
+**Scope**: `codebase`
