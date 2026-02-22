@@ -2,8 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   disposeWindowPlacementLifecycle,
   initializeWindowPlacementLifecycle,
+  loadModelPreferenceRecord,
   loadThreadPanelOpenRecord,
   loadThreadPanelWidthRecord,
+  persistModelPreferenceRecord,
   persistThreadPanelOpenRecord,
   persistThreadPanelWidthRecord,
   persistWindowPlacement,
@@ -322,6 +324,38 @@ describe("windowStateClient", () => {
     await expect(persistThreadPanelOpenRecord(true)).resolves.toBeUndefined();
     expect(invokeMock).toHaveBeenCalledWith("window_persist_thread_panel_open", {
       open: true,
+    });
+  });
+
+  it("loads model preference from dedicated command", async () => {
+    invokeMock.mockResolvedValueOnce({
+      model: "gpt-5.2-codex",
+      effort: "high",
+    });
+    await expect(loadModelPreferenceRecord()).resolves.toEqual({
+      model: "gpt-5.2-codex",
+      effort: "high",
+    });
+    expect(invokeMock).toHaveBeenCalledWith("window_read_model_preference");
+  });
+
+  it("normalizes blank model preference as null", async () => {
+    invokeMock.mockResolvedValueOnce({
+      model: "  ",
+      effort: "medium",
+    });
+    await expect(loadModelPreferenceRecord()).resolves.toBeNull();
+    expect(invokeMock).toHaveBeenCalledWith("window_read_model_preference");
+  });
+
+  it("persists model preference through dedicated command", async () => {
+    invokeMock.mockResolvedValueOnce(undefined);
+    await expect(
+      persistModelPreferenceRecord("gpt-5.2-codex", "high"),
+    ).resolves.toBeUndefined();
+    expect(invokeMock).toHaveBeenCalledWith("window_persist_model_preference", {
+      model: "gpt-5.2-codex",
+      effort: "high",
     });
   });
 });

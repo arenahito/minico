@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use std::path::Path;
@@ -13,6 +14,13 @@ const MIN_WIDTH: u32 = 480;
 const MIN_HEIGHT: u32 = 360;
 const MIN_THREAD_PANEL_WIDTH: u32 = 220;
 const MAX_THREAD_PANEL_WIDTH: u32 = 560;
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelPreferenceRecord {
+    pub model: Option<String>,
+    pub effort: Option<String>,
+}
 
 #[tauri::command]
 pub fn window_restore_placement(
@@ -64,6 +72,28 @@ pub async fn window_persist_thread_panel_open(open: bool) -> Result<(), String> 
     run_blocking_task(move || {
         let config_path = paths::config_file_path().map_err(|error| error.to_string())?;
         persist_thread_panel_open_to_path(&config_path, open).map_err(|error| error.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn window_read_model_preference() -> Result<ModelPreferenceRecord, String> {
+    run_blocking_task(move || {
+        let config_path = paths::config_file_path().map_err(|error| error.to_string())?;
+        read_model_preference_from_path(&config_path).map_err(|error| error.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn window_persist_model_preference(
+    model: Option<String>,
+    effort: Option<String>,
+) -> Result<(), String> {
+    run_blocking_task(move || {
+        let config_path = paths::config_file_path().map_err(|error| error.to_string())?;
+        persist_model_preference_to_path(&config_path, model, effort)
+            .map_err(|error| error.to_string())
     })
     .await
 }
@@ -151,6 +181,55 @@ pub fn persist_thread_panel_open_to_path(
     save_system_update(config_path, &config)
 }
 
+pub fn read_model_preference_from_path(
+    config_path: &Path,
+) -> Result<ModelPreferenceRecord, ConfigError> {
+    let config = load_or_default(config_path)?;
+    Ok(ModelPreferenceRecord {
+        model: config.window.selected_model.and_then(|value| {
+            let trimmed = value.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        }),
+        effort: config.window.selected_effort.and_then(|value| {
+            let trimmed = value.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        }),
+    })
+}
+
+pub fn persist_model_preference_to_path(
+    config_path: &Path,
+    model: Option<String>,
+    effort: Option<String>,
+) -> Result<(), ConfigError> {
+    let mut config = load_or_default(config_path)?;
+    config.window.selected_model = model.and_then(|value| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    });
+    config.window.selected_effort = effort.and_then(|value| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    });
+    save_system_update(config_path, &config)
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
@@ -158,8 +237,10 @@ mod tests {
     use super::super::config::{save_system_update, MinicoConfig, WindowPlacement};
     use super::super::monitor::MonitorWorkArea;
     use super::{
+        persist_model_preference_to_path,
         persist_thread_panel_open_to_path, persist_thread_panel_width_to_path,
         persist_window_placement_to_path,
+        read_model_preference_from_path,
         read_thread_panel_open_from_path, read_thread_panel_width_from_path,
         restore_window_placement,
     };
@@ -279,5 +360,24 @@ mod tests {
         persist_thread_panel_open_to_path(&config_path, false).expect("persist");
         let read_back = read_thread_panel_open_from_path(&config_path).expect("read");
         assert_eq!(read_back, Some(false));
+    }
+
+    #[test]
+    fn persists_model_preference_without_codex_path_validation_blocking() {
+        let temp = TempDir::new().expect("temp dir");
+        let config_path = temp.path().join("config.json");
+        let mut config = MinicoConfig::default();
+        config.codex.path = Some(temp.path().join("missing-codex.exe").display().to_string());
+        save_system_update(&config_path, &config).expect("seed config");
+
+        persist_model_preference_to_path(
+            &config_path,
+            Some("gpt-5.2-codex".to_string()),
+            Some("high".to_string()),
+        )
+        .expect("persist");
+        let read_back = read_model_preference_from_path(&config_path).expect("read");
+        assert_eq!(read_back.model.as_deref(), Some("gpt-5.2-codex"));
+        assert_eq!(read_back.effort.as_deref(), Some("high"));
     }
 }

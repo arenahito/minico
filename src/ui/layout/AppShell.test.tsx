@@ -11,6 +11,8 @@ const loadThreadPanelOpenRecord = vi.fn().mockResolvedValue(null);
 const loadThreadPanelWidthRecord = vi.fn().mockResolvedValue(null);
 const persistThreadPanelOpenRecord = vi.fn().mockResolvedValue(undefined);
 const persistThreadPanelWidthRecord = vi.fn().mockResolvedValue(undefined);
+const loadModelPreferenceRecord = vi.fn().mockResolvedValue(null);
+const persistModelPreferenceRecord = vi.fn().mockResolvedValue(undefined);
 const openUrl = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -35,6 +37,10 @@ vi.mock("../../core/window/windowStateClient", () => ({
     persistThreadPanelOpenRecord(...args),
   persistThreadPanelWidthRecord: (...args: unknown[]) =>
     persistThreadPanelWidthRecord(...args),
+  loadModelPreferenceRecord: (...args: unknown[]) =>
+    loadModelPreferenceRecord(...args),
+  persistModelPreferenceRecord: (...args: unknown[]) =>
+    persistModelPreferenceRecord(...args),
 }));
 
 vi.mock("../settings/SettingsView", () => ({
@@ -67,6 +73,9 @@ describe("AppShell", () => {
     loadThreadPanelWidthRecord.mockResolvedValue(null);
     persistThreadPanelOpenRecord.mockClear();
     persistThreadPanelWidthRecord.mockClear();
+    loadModelPreferenceRecord.mockClear();
+    loadModelPreferenceRecord.mockResolvedValue(null);
+    persistModelPreferenceRecord.mockClear();
     openUrl.mockClear();
   });
 
@@ -605,6 +614,131 @@ describe("AppShell", () => {
         effort: "high",
       });
     });
+  });
+
+  it("restores persisted model and effort on startup", async () => {
+    loadModelPreferenceRecord.mockResolvedValueOnce({
+      model: "gpt-5.2-codex",
+      effort: "high",
+    });
+    mockedInvoke.mockImplementation(async (command) => {
+      if (command === "auth_read_status") {
+        return {
+          state: "loggedIn",
+          accountEmail: "demo@example.com",
+          requiresOpenaiAuth: false,
+          rawAuthMode: "chatgpt",
+          message: null,
+        };
+      }
+      if (command === "thread_list") {
+        return { threads: [] };
+      }
+      if (command === "model_list") {
+        return {
+          models: [
+            {
+              id: "m1",
+              model: "gpt-5.2-codex",
+              displayName: "gpt-5.2-codex",
+              isDefault: true,
+              defaultReasoningEffort: "medium",
+              supportedReasoningEfforts: ["low", "medium", "high"],
+            },
+            {
+              id: "m2",
+              model: "gpt-5-mini",
+              displayName: "gpt-5-mini",
+              isDefault: false,
+              defaultReasoningEffort: "low",
+              supportedReasoningEfforts: ["minimal", "low", "high"],
+            },
+          ],
+        };
+      }
+      if (command === "workspace_resolve_active_cwd") {
+        return {
+          cwd: "C:/workspace/demo",
+          fallbackUsed: false,
+          warning: null,
+        };
+      }
+      if (command === "session_poll_events") {
+        return [];
+      }
+      return undefined;
+    });
+
+    render(<AppShell />);
+
+    await waitFor(() => {
+      expect(screen.getByText("gpt-5.2-codex / high")).toBeVisible();
+    });
+  });
+
+  it("keeps selected effort when reopening effort list for the same model", async () => {
+    const user = userEvent.setup();
+    mockedInvoke.mockImplementation(async (command) => {
+      if (command === "auth_read_status") {
+        return {
+          state: "loggedIn",
+          accountEmail: "demo@example.com",
+          requiresOpenaiAuth: false,
+          rawAuthMode: "chatgpt",
+          message: null,
+        };
+      }
+      if (command === "thread_list") {
+        return { threads: [] };
+      }
+      if (command === "model_list") {
+        return {
+          models: [
+            {
+              id: "m1",
+              model: "gpt-5.2-codex",
+              displayName: "gpt-5.2-codex",
+              isDefault: true,
+              defaultReasoningEffort: "medium",
+              supportedReasoningEfforts: ["low", "medium", "high"],
+            },
+          ],
+        };
+      }
+      if (command === "workspace_resolve_active_cwd") {
+        return {
+          cwd: "C:/workspace/demo",
+          fallbackUsed: false,
+          warning: null,
+        };
+      }
+      if (command === "session_poll_events") {
+        return [];
+      }
+      return undefined;
+    });
+
+    render(<AppShell />);
+    await waitFor(() => {
+      expect(screen.getByText("C:/workspace/demo")).toBeVisible();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Select model" }));
+    await user.click(screen.getByRole("option", { name: "gpt-5.2-codex" }));
+    await user.click(screen.getByRole("option", { name: "high" }));
+    expect(screen.getByText("gpt-5.2-codex / high")).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "Select model" }));
+    await user.click(screen.getByRole("option", { name: "gpt-5.2-codex" }));
+
+    expect(screen.getByRole("option", { name: "high" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByRole("option", { name: "medium" })).toHaveAttribute(
+      "aria-selected",
+      "false",
+    );
   });
 
   it("restores thread panel width and persists updated width after dragging", async () => {

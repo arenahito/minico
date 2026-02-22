@@ -55,8 +55,10 @@ import {
 import {
   disposeWindowPlacementLifecycle,
   initializeWindowPlacementLifecycle,
+  loadModelPreferenceRecord,
   loadThreadPanelOpenRecord,
   loadThreadPanelWidthRecord,
+  persistModelPreferenceRecord,
   persistThreadPanelOpenRecord,
   persistThreadPanelWidthRecord,
 } from "../../core/window/windowStateClient";
@@ -248,6 +250,10 @@ function clampThreadPanelWidth(width: number, containerWidth: number | null): nu
   return Math.round(Math.min(max, Math.max(THREAD_PANEL_MIN_WIDTH, width)));
 }
 
+function modelPreferenceKey(model: string, effort: ReasoningEffort | null): string {
+  return `${model}|${effort ?? "__default__"}`;
+}
+
 export function AppShell() {
   const [auth, setAuth] = useState<AuthMachineState>(initialAuthMachineState);
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
@@ -284,6 +290,7 @@ export function AppShell() {
   const threadPanelWidthRef = useRef(threadPanelWidth);
   const persistedThreadPanelOpenRef = useRef<boolean | null>(null);
   const persistedThreadPanelWidthRef = useRef<number | null>(null);
+  const persistedModelPreferenceRef = useRef<string | null>(null);
   const dragCleanupRef = useRef<(() => void) | null>(null);
   const pollInFlightRef = useRef(false);
   const autoCancelInFlightRef = useRef<Set<number>>(new Set());
@@ -556,19 +563,34 @@ export function AppShell() {
       setSelectedModel(FALLBACK_MODELS[0].model);
       setSelectedEffort(resolveEffortForModel(FALLBACK_MODELS[0]));
       setSelectorStage("model");
+      persistedModelPreferenceRef.current = null;
       return;
     }
 
     let cancelled = false;
-    void listModels()
-      .then((loaded) => {
+    async function bootstrapModelSelector(): Promise<void> {
+      try {
+        const [loaded, persistedPreference] = await Promise.all([
+          listModels(),
+          loadModelPreferenceRecord().catch((reason) => {
+            if (!cancelled) {
+              setError(mapErrorToUserFacing(reason));
+            }
+            return null;
+          }),
+        ]);
         if (cancelled) {
           return;
         }
+
         const catalog = resolveModelCatalog(loaded);
         setModelCatalog(catalog);
+        const persistedModel = persistedPreference?.model ?? null;
         const defaultModel = catalog.find((model) => model.isDefault)?.model ?? null;
         const nextModel =
+          (persistedModel && catalog.some((model) => model.model === persistedModel)
+            ? persistedModel
+            : null) ??
           (defaultModel && catalog.some((model) => model.model === defaultModel)
             ? defaultModel
             : null) ??
@@ -576,23 +598,59 @@ export function AppShell() {
             ? selectedModelRef.current
             : catalog[0].model);
         const nextSummary = catalog.find((model) => model.model === nextModel) ?? null;
+        const persistedEffort = normalizeReasoningEffort(persistedPreference?.effort);
+        const supportedEfforts = new Set(nextSummary?.supportedReasoningEfforts ?? []);
+        const nextEffort: ReasoningEffort | null =
+          persistedModel === nextModel
+            ? persistedEffort && supportedEfforts.has(persistedEffort)
+              ? persistedEffort
+              : persistedPreference?.effort === null
+                ? null
+                : resolveEffortForModel(nextSummary)
+            : resolveEffortForModel(nextSummary);
+
+        persistedModelPreferenceRef.current = modelPreferenceKey(nextModel, nextEffort);
         setSelectedModel(nextModel);
-        setSelectedEffort(resolveEffortForModel(nextSummary));
+        setSelectedEffort(nextEffort);
         setSelectorStage("model");
-      })
-      .catch(() => {
+      } catch {
         if (!cancelled) {
+          const fallbackEffort = resolveEffortForModel(FALLBACK_MODELS[0]);
+          persistedModelPreferenceRef.current = modelPreferenceKey(
+            FALLBACK_MODELS[0].model,
+            fallbackEffort,
+          );
           setModelCatalog(FALLBACK_MODELS);
           setSelectedModel(FALLBACK_MODELS[0].model);
-          setSelectedEffort(resolveEffortForModel(FALLBACK_MODELS[0]));
+          setSelectedEffort(fallbackEffort);
           setSelectorStage("model");
         }
-      });
+      }
+    }
+
+    void bootstrapModelSelector();
 
     return () => {
       cancelled = true;
     };
   }, [auth.view]);
+
+  useEffect(() => {
+    if (auth.view !== "loggedIn") {
+      persistedModelPreferenceRef.current = null;
+      return;
+    }
+
+    const nextKey = modelPreferenceKey(selectedModel, selectedEffort);
+    if (persistedModelPreferenceRef.current === nextKey) {
+      return;
+    }
+    persistedModelPreferenceRef.current = nextKey;
+    void persistModelPreferenceRecord(selectedModel, selectedEffort).catch((reason) => {
+      persistedModelPreferenceRef.current = null;
+      setError(mapErrorToUserFacing(reason));
+    });
+  }, [auth.view, selectedEffort, selectedModel]);
 
   useEffect(() => {
     if (auth.view !== "loginInProgress" && auth.view !== "loggedIn") {
@@ -1029,8 +1087,11 @@ export function AppShell() {
       if (!nextModel) {
         return false;
       }
+      const modelChanged = nextModel.model !== selectedModel;
       setSelectedModel(nextModel.model);
-      setSelectedEffort(resolveEffortForModel(nextModel));
+      if (modelChanged) {
+        setSelectedEffort(resolveEffortForModel(nextModel));
+      }
       setSelectorStage("effort");
       return false;
     }

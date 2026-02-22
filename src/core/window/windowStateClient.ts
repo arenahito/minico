@@ -14,6 +14,11 @@ export interface MonitorWorkArea {
   isPrimary: boolean;
 }
 
+export interface ModelPreferenceRecord {
+  model: string | null;
+  effort: string | null;
+}
+
 let disposeLifecycleListeners: (() => void) | null = null;
 let lastPersistedPlacementKey: string | null = null;
 let lifecycleGeneration = 0;
@@ -105,6 +110,35 @@ export async function loadThreadPanelOpenRecord(): Promise<boolean | null> {
 
 export async function persistThreadPanelOpenRecord(open: boolean): Promise<void> {
   await invoke("window_persist_thread_panel_open", { open });
+}
+
+export async function loadModelPreferenceRecord(): Promise<ModelPreferenceRecord | null> {
+  const value = await invoke<ModelPreferenceRecord | null>("window_read_model_preference");
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const model =
+    typeof value.model === "string" && value.model.trim().length > 0
+      ? value.model.trim()
+      : null;
+  const effort =
+    typeof value.effort === "string" && value.effort.trim().length > 0
+      ? value.effort.trim()
+      : null;
+  if (!model) {
+    return null;
+  }
+  return { model, effort };
+}
+
+export async function persistModelPreferenceRecord(
+  model: string | null,
+  effort: string | null,
+): Promise<void> {
+  await invoke("window_persist_model_preference", {
+    model: model?.trim() || null,
+    effort: effort?.trim() || null,
+  });
 }
 
 function toMonitorWorkArea(monitor: {

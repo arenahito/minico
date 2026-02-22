@@ -25,6 +25,8 @@ pub fn run() {
             core::window_state::window_persist_thread_panel_width,
             core::window_state::window_read_thread_panel_open,
             core::window_state::window_persist_thread_panel_open,
+            core::window_state::window_read_model_preference,
+            core::window_state::window_persist_model_preference,
             core::auth::auth_read_status,
             core::auth::auth_login_start_chatgpt,
             core::auth::auth_logout_and_read,

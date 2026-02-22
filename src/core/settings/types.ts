@@ -25,6 +25,8 @@ export interface MinicoConfig {
     placement: WindowPlacement;
     threadPanelWidth?: number | null;
     threadPanelOpen?: boolean | null;
+    selectedModel?: string | null;
+    selectedEffort?: string | null;
   };
 }
 

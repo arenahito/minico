@@ -87,6 +87,10 @@ pub struct WindowConfig {
     pub thread_panel_width: Option<u32>,
     #[serde(rename = "threadPanelOpen")]
     pub thread_panel_open: Option<bool>,
+    #[serde(rename = "selectedModel")]
+    pub selected_model: Option<String>,
+    #[serde(rename = "selectedEffort")]
+    pub selected_effort: Option<String>,
     #[serde(flatten)]
     pub extra: HashMap<String, serde_json::Value>,
 }
