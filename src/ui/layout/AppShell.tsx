@@ -64,6 +64,30 @@ function eventIsAccountSignal(event: SessionPolledEvent): boolean {
   );
 }
 
+async function readAuthStatusWithTimeout(
+  timeoutMs: number,
+): ReturnType<typeof readAuthStatus> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      reject(
+        new Error(
+          `Account status check timed out after ${timeoutMs}ms. Verify codex app-server responsiveness.`,
+        ),
+      );
+    }, timeoutMs);
+
+    void readAuthStatus()
+      .then((status) => {
+        window.clearTimeout(timer);
+        resolve(status);
+      })
+      .catch((reason) => {
+        window.clearTimeout(timer);
+        reject(reason);
+      });
+  });
+}
+
 function dispatchAuthEventFromNotification(
   state: AuthMachineState,
   event: SessionPolledEvent,
@@ -148,7 +172,7 @@ export function AppShell() {
     }
 
     let cancelled = false;
-    void readAuthStatus()
+    void readAuthStatusWithTimeout(12000)
       .then((status) => {
         if (!cancelled) {
           setAuth((current) =>
@@ -205,6 +229,10 @@ export function AppShell() {
   }, [auth.view, activeThreadId]);
 
   useEffect(() => {
+    if (auth.view !== "loginInProgress" && auth.view !== "loggedIn") {
+      return;
+    }
+
     let cancelled = false;
 
     async function tick() {
@@ -237,7 +265,7 @@ export function AppShell() {
               event.method === "account/login/completed" &&
               event.params.success === true
             ) {
-              void readAuthStatus()
+              void readAuthStatusWithTimeout(12000)
                 .then((status) => {
                   if (!cancelled) {
                     setAuth((current) =>
@@ -287,7 +315,7 @@ export function AppShell() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, []);
+  }, [auth.view]);
 
   useEffect(() => {
     if (!activeApproval || auth.view === "loggedIn") {

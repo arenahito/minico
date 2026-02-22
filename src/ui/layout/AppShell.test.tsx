@@ -141,6 +141,7 @@ describe("AppShell", () => {
   });
 
   it("re-reads auth status after login completion success notification", async () => {
+    const user = userEvent.setup();
     let readCount = 0;
     let pollCount = 0;
     mockedInvoke.mockImplementation(async (command) => {
@@ -176,6 +177,12 @@ describe("AppShell", () => {
         }
         return [];
       }
+      if (command === "auth_login_start_chatgpt") {
+        return {
+          authUrl: "https://example.com/auth",
+          loginId: "login-1",
+        };
+      }
       if (command === "thread_list") {
         return { threads: [] };
       }
@@ -183,10 +190,14 @@ describe("AppShell", () => {
     });
 
     render(<AppShell />);
+    await screen.findByRole("heading", { level: 2, name: "Login required" });
+    await user.click(screen.getByRole("button", { name: "Continue with ChatGPT" }));
+
     await waitFor(() => {
       expect(screen.getByRole("heading", { level: 2, name: "Threads" })).toBeVisible();
     });
     expect(readCount).toBeGreaterThanOrEqual(2);
+    expect(openUrl).toHaveBeenCalledWith("https://example.com/auth");
   });
 
   it("keeps approval dialog queued when response and fallback both fail", async () => {
