@@ -1,0 +1,41 @@
+:root {
+  --font-ui: "Noto Sans JP", "Hiragino Sans", "Yu Gothic UI", sans-serif;
+  --font-mono: "IBM Plex Mono", "Consolas", "Liberation Mono", monospace;
+
+  --bg-canvas: #f5f2ea;
+  --bg-panel: #fffdf8;
+  --bg-panel-2: #f7efe1;
+  --bg-accent: #17486e;
+  --bg-accent-soft: #2f6b85;
+  --fg-default: #1e1b17;
+  --fg-muted: #5c5146;
+  --fg-inverse: #fefcf8;
+  --border-default: #d8cabb;
+  --border-strong: #a48a73;
+  --focus-ring: #0e7fae;
+  --warning: #8f5e00;
+  --error: #ad2424;
+  --success: #2f6f3e;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+}
+
+@keyframes warm-fade-in {
+  0% {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+

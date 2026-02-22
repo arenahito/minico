@@ -1,13 +1,134 @@
-import { useEffect } from "react";
+import {
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+  type Dispatch,
+} from "react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 
-import { initialSessionState } from "../../core/session/store";
+import {
+  cancelApprovalFallback,
+  ingestApprovalEvent,
+  respondApprovalDecision,
+} from "../../core/approval/approvalBridge";
+import {
+  currentApproval,
+  initialApprovalState,
+  resolveApproval,
+  type ApprovalDecision,
+  type ApprovalState,
+} from "../../core/approval/approvalStore";
+import {
+  interruptTurn,
+  listThreads,
+  pollSessionEvents,
+  resumeThread,
+  startThread,
+  startTurn,
+  type SessionPolledEvent,
+  type ThreadSummary,
+} from "../../core/chat/threadService";
+import {
+  eventToTurnAction,
+  initialTurnStreamState,
+  orderedTurnItems,
+  reduceTurnStream,
+  type TurnAction,
+} from "../../core/chat/turnReducer";
+import { mapErrorToUserFacing, type UserFacingError } from "../../core/errors/errorMapper";
+import {
+  initialAuthMachineState,
+  logoutAndReadAuth,
+  readAuthStatus,
+  reduceAuthMachine,
+  startChatgptLogin,
+  type AuthMachineState,
+} from "../../core/session/authMachine";
 import {
   initializeWindowPlacementLifecycle,
   persistWindowPlacement,
 } from "../../core/window/windowStateClient";
+import { ApprovalDialog } from "../approval/ApprovalDialog";
+import { ChatView } from "../chat/ChatView";
+import { ThreadListPanel } from "../chat/ThreadListPanel";
+import { ErrorBanner } from "../common/ErrorBanner";
+import { LoginView } from "../login/LoginView";
 import { SettingsView } from "../settings/SettingsView";
 
+function eventIsAccountSignal(event: SessionPolledEvent): boolean {
+  return (
+    event.kind === "notification" &&
+    (event.method === "account/login/completed" || event.method === "account/updated")
+  );
+}
+
+function dispatchAuthEventFromNotification(
+  state: AuthMachineState,
+  event: SessionPolledEvent,
+): AuthMachineState {
+  if (event.kind !== "notification") {
+    return state;
+  }
+
+  if (event.method === "account/login/completed") {
+    const success = Boolean(event.params.success);
+    const error =
+      typeof event.params.error === "string" ? event.params.error : null;
+    return reduceAuthMachine(state, {
+      type: "loginCompletedNotification",
+      success,
+      error,
+    });
+  }
+
+  if (event.method === "account/updated") {
+    const authMode =
+      typeof event.params.authMode === "string" ? event.params.authMode : null;
+    return reduceAuthMachine(state, {
+      type: "accountUpdatedNotification",
+      authMode,
+    });
+  }
+
+  return state;
+}
+
+function applyTurnEvent(
+  dispatch: Dispatch<TurnAction>,
+  event: SessionPolledEvent,
+): void {
+  const action = eventToTurnAction(event);
+  if (action) {
+    dispatch(action);
+  }
+}
+
 export function AppShell() {
+  const [auth, setAuth] = useState<AuthMachineState>(initialAuthMachineState);
+  const [threads, setThreads] = useState<ThreadSummary[]>([]);
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  const [turnState, dispatchTurn] = useReducer(
+    reduceTurnStream,
+    initialTurnStreamState,
+  );
+  const [approvalState, setApprovalState] =
+    useState<ApprovalState>(initialApprovalState);
+  const [showSettings, setShowSettings] = useState(false);
+  const [composerValue, setComposerValue] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [approvalBusy, setApprovalBusy] = useState(false);
+  const [error, setError] = useState<UserFacingError | null>(null);
+  const pollInFlightRef = useRef(false);
+  const autoCancelInFlightRef = useRef<Set<number>>(new Set());
+
+  const activeApproval = useMemo(
+    () => currentApproval(approvalState),
+    [approvalState],
+  );
+  const turnItems = useMemo(() => orderedTurnItems(turnState), [turnState]);
+
   useEffect(() => {
     void initializeWindowPlacementLifecycle();
     const handleBeforeUnload = () => {
@@ -21,24 +142,399 @@ export function AppShell() {
     };
   }, []);
 
+  useEffect(() => {
+    if (auth.view !== "checking") {
+      return;
+    }
+
+    let cancelled = false;
+    void readAuthStatus()
+      .then((status) => {
+        if (!cancelled) {
+          setAuth((current) =>
+            reduceAuthMachine(current, {
+              type: "statusLoaded",
+              status,
+            }),
+          );
+        }
+      })
+      .catch((reason) => {
+        if (!cancelled) {
+          const mapped = mapErrorToUserFacing(reason);
+          setError(mapped);
+          setAuth((current) =>
+            reduceAuthMachine(current, {
+              type: "failed",
+              message: mapped.message,
+            }),
+          );
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [auth.view]);
+
+  useEffect(() => {
+    if (auth.view !== "loggedIn") {
+      return;
+    }
+
+    let cancelled = false;
+    void listThreads()
+      .then((loaded) => {
+        if (cancelled) {
+          return;
+        }
+        setThreads(loaded);
+        if (!activeThreadId && loaded.length > 0) {
+          setActiveThreadId(loaded[0].id);
+        }
+      })
+      .catch((reason) => {
+        if (!cancelled) {
+          setError(mapErrorToUserFacing(reason));
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [auth.view, activeThreadId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function tick() {
+      if (pollInFlightRef.current) {
+        return;
+      }
+
+      pollInFlightRef.current = true;
+      try {
+        const events = await pollSessionEvents(150, 24);
+        if (cancelled || events.length === 0) {
+          pollInFlightRef.current = false;
+          return;
+        }
+
+        for (const event of events) {
+          if (event.kind === "malformedLine") {
+            setError(
+              mapErrorToUserFacing(
+                `Invalid app-server message: ${event.reason || event.raw}`,
+              ),
+            );
+            continue;
+          }
+
+          if (eventIsAccountSignal(event)) {
+            setAuth((current) => dispatchAuthEventFromNotification(current, event));
+            if (
+              event.kind === "notification" &&
+              event.method === "account/login/completed" &&
+              event.params.success === true
+            ) {
+              void readAuthStatus()
+                .then((status) => {
+                  if (!cancelled) {
+                    setAuth((current) =>
+                      reduceAuthMachine(current, {
+                        type: "statusLoaded",
+                        status,
+                      }),
+                    );
+                  }
+                })
+                .catch((reason) => {
+                  if (!cancelled) {
+                    const mapped = mapErrorToUserFacing(reason);
+                    setError(mapped);
+                    setAuth((current) =>
+                      reduceAuthMachine(current, {
+                        type: "failed",
+                        message: mapped.message,
+                      }),
+                    );
+                  }
+                });
+            }
+          }
+
+          applyTurnEvent(dispatchTurn, event);
+
+          if (event.kind === "serverRequest") {
+            setApprovalState((current) => ingestApprovalEvent(current, event));
+          }
+        }
+      } catch (reason) {
+        if (!cancelled) {
+          setError(mapErrorToUserFacing(reason));
+        }
+      } finally {
+        pollInFlightRef.current = false;
+      }
+    }
+
+    void tick();
+    const timer = window.setInterval(() => {
+      void tick();
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!activeApproval || auth.view === "loggedIn") {
+      return;
+    }
+
+    if (autoCancelInFlightRef.current.has(activeApproval.requestId)) {
+      return;
+    }
+
+    autoCancelInFlightRef.current.add(activeApproval.requestId);
+    void (async () => {
+      let resolved = false;
+      try {
+        await cancelApprovalFallback(activeApproval.requestId);
+        resolved = true;
+      } catch (reason) {
+        setError(mapErrorToUserFacing(reason));
+      } finally {
+        if (resolved) {
+          setApprovalState((current) =>
+            resolveApproval(current, activeApproval.requestId),
+          );
+        }
+        autoCancelInFlightRef.current.delete(activeApproval.requestId);
+      }
+    })();
+  }, [activeApproval, auth.view]);
+
+  async function refreshThreads(): Promise<void> {
+    setBusy(true);
+    try {
+      const loaded = await listThreads();
+      setThreads(loaded);
+    } catch (reason) {
+      setError(mapErrorToUserFacing(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleCreateThread(): Promise<void> {
+    setBusy(true);
+    try {
+      const started = await startThread();
+      setActiveThreadId(started.threadId);
+      dispatchTurn({ type: "resetThread", threadId: started.threadId });
+      await refreshThreads();
+    } catch (reason) {
+      setError(mapErrorToUserFacing(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSelectThread(threadId: string): Promise<void> {
+    setBusy(true);
+    try {
+      const resumed = await resumeThread(threadId);
+      setActiveThreadId(resumed.threadId);
+      dispatchTurn({ type: "resetThread", threadId: resumed.threadId });
+    } catch (reason) {
+      setError(mapErrorToUserFacing(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSubmitPrompt(): Promise<void> {
+    const trimmed = composerValue.trim();
+    if (!trimmed) {
+      return;
+    }
+
+    setBusy(true);
+    try {
+      let targetThreadId = activeThreadId;
+      if (!targetThreadId) {
+        const started = await startThread();
+        targetThreadId = started.threadId;
+        setActiveThreadId(started.threadId);
+        dispatchTurn({ type: "resetThread", threadId: started.threadId });
+      }
+
+      const turn = await startTurn(targetThreadId, trimmed);
+      if (turn.turnId) {
+        dispatchTurn({
+          type: "turnStarted",
+          threadId: targetThreadId,
+          turnId: turn.turnId,
+        });
+      }
+      setComposerValue("");
+      await refreshThreads();
+    } catch (reason) {
+      setError(mapErrorToUserFacing(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleInterruptTurn(): Promise<void> {
+    if (!activeThreadId || !turnState.activeTurnId) {
+      return;
+    }
+
+    setBusy(true);
+    try {
+      await interruptTurn(activeThreadId, turnState.activeTurnId);
+      dispatchTurn({
+        type: "turnInterrupted",
+        turnId: turnState.activeTurnId,
+      });
+    } catch (reason) {
+      setError(mapErrorToUserFacing(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleStartLogin(): Promise<void> {
+    setBusy(true);
+    try {
+      const login = await startChatgptLogin();
+      setAuth((current) =>
+        reduceAuthMachine(current, {
+          type: "loginStarted",
+          loginId: login.loginId,
+        }),
+      );
+      await openUrl(login.authUrl);
+    } catch (reason) {
+      setError(mapErrorToUserFacing(reason));
+      setAuth((current) =>
+        reduceAuthMachine(current, {
+          type: "failed",
+          message: String(reason),
+        }),
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleLogoutAndContinue(): Promise<void> {
+    setBusy(true);
+    try {
+      const status = await logoutAndReadAuth();
+      setAuth((current) =>
+        reduceAuthMachine(current, {
+          type: "statusLoaded",
+          status,
+        }),
+      );
+    } catch (reason) {
+      setError(mapErrorToUserFacing(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleApprovalDecision(
+    decision: ApprovalDecision,
+  ): Promise<void> {
+    const approval = activeApproval;
+    if (!approval) {
+      return;
+    }
+
+    setApprovalBusy(true);
+    let resolved = false;
+    try {
+      await respondApprovalDecision(approval.requestId, decision);
+      resolved = true;
+    } catch (reason) {
+      setError(mapErrorToUserFacing(reason));
+      try {
+        await cancelApprovalFallback(approval.requestId);
+        resolved = true;
+      } catch (fallbackError) {
+        setError(mapErrorToUserFacing(fallbackError));
+      }
+    } finally {
+      if (resolved) {
+        setApprovalState((current) =>
+          resolveApproval(current, approval.requestId),
+        );
+      }
+      setApprovalBusy(false);
+    }
+  }
+
   return (
     <div className="app-shell">
       <header className="app-header">
         <h1 className="app-title">minico</h1>
-        <p className="app-subtitle">V0 bootstrap workspace is ready.</p>
+        <p className="app-subtitle">
+          ChatGPT OAuth only, app-server threads, and explicit approvals.
+        </p>
       </header>
-      <main className="app-main">
-        <section className="status-card" aria-label="bootstrap status">
-          <h2>Session status</h2>
-          <p>
-            Stage: <strong>{initialSessionState.stage}</strong>
-          </p>
-          <p>
-            Target: <strong>{initialSessionState.buildTarget}</strong>
-          </p>
-        </section>
-        <SettingsView />
-      </main>
+
+      {error ? <ErrorBanner error={error} onDismiss={() => setError(null)} /> : null}
+
+      {auth.view === "loggedIn" ? (
+        <main className="app-main">
+          <ThreadListPanel
+            threads={threads}
+            activeThreadId={activeThreadId}
+            busy={busy}
+            onCreateThread={() => void handleCreateThread()}
+            onRefreshThreads={() => void refreshThreads()}
+            onSelectThread={(threadId) => void handleSelectThread(threadId)}
+            onOpenSettings={() => setShowSettings((current) => !current)}
+          />
+
+          <section className="main-content">
+            {showSettings ? (
+              <SettingsView />
+            ) : (
+              <ChatView
+                turnState={turnState}
+                items={turnItems}
+                composerValue={composerValue}
+                busy={busy}
+                onComposerChange={setComposerValue}
+                onSubmitPrompt={() => void handleSubmitPrompt()}
+                onInterrupt={() => void handleInterruptTurn()}
+              />
+            )}
+          </section>
+        </main>
+      ) : (
+        <main className="auth-main">
+          <LoginView
+            auth={auth}
+            busy={busy}
+            onStartLogin={() => void handleStartLogin()}
+            onLogoutAndContinue={() => void handleLogoutAndContinue()}
+          />
+        </main>
+      )}
+
+      <ApprovalDialog
+        request={activeApproval}
+        busy={approvalBusy}
+        onDecision={(decision) => void handleApprovalDecision(decision)}
+      />
     </div>
   );
 }
