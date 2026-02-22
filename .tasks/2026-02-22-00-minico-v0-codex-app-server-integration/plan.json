@@ -28,7 +28,7 @@
     {
       "id": "1ec318b7-42ba-4683-82c7-2e204f815122",
       "title": "B1: Build AppServerProcess and JSON-RPC Transport Core",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "07dc6221-022c-4efa-baf2-981aaf8f0818",
         "80bfdcdd-f4c0-4be3-9e5e-b33ba07f3324"

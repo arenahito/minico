@@ -107,3 +107,35 @@ cmd /c rmdir /s /q "_bootstrap"
 **Resolution**: Settings bootstrap now computes an `effectiveWorkspacePath` from resolver output and writes it into local config/input state before save actions.
 
 **Scope**: `task-specific`
+
+## B1: Build AppServerProcess and JSON-RPC Transport Core
+
+### Transport: Test concurrent request correlation with out-of-order responses
+
+**Context**: The RPC transport uses `id -> pending` mapping and asynchronous reader dispatch.
+
+**Problem**: Single-message tests can pass even when concurrent requests break due to race conditions or incorrect pending cleanup.
+
+**Resolution**: Added a concurrency test using custom in-memory reader/writer pipes that sends multiple requests in parallel and returns responses in reverse order. The test asserts each worker receives the matching payload for its own request id.
+
+**Scope**: `codebase`
+
+### Robustness: Treat malformed JSONL as a recoverable stream event
+
+**Context**: app-server communication is line-delimited JSON where partial or malformed lines can appear during failures.
+
+**Problem**: If malformed lines terminate processing, valid subsequent messages are dropped and UI appears frozen.
+
+**Resolution**: Reader thread now emits `RpcEvent::MalformedLine` and continues reading. Added a transport-level test proving a valid notification still arrives after a malformed line.
+
+**Scope**: `codebase`
+
+### Error Taxonomy: Use operation-specific process lifecycle errors
+
+**Context**: Process lifecycle errors are surfaced to diagnostics and user-facing logs.
+
+**Problem**: Mapping `kill()` failures to `Spawn` errors obscures the real failure phase and complicates debugging.
+
+**Resolution**: Added `AppServerProcessError::Terminate` and mapped termination failures explicitly.
+
+**Scope**: `codebase`
