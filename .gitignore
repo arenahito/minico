@@ -13,6 +13,7 @@ dist-ssr
 *.local
 coverage
 src-tauri/target
+.tmp
 
 # Editor directories and files
 .vscode/*

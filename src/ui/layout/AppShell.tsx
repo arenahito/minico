@@ -4,9 +4,12 @@ import {
   useReducer,
   useRef,
   useState,
+  type CSSProperties,
   type Dispatch,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { List, Settings, X } from "lucide-react";
 
 import {
   cancelApprovalFallback,
@@ -50,8 +53,12 @@ import {
   type AuthMachineState,
 } from "../../core/session/authMachine";
 import {
+  disposeWindowPlacementLifecycle,
   initializeWindowPlacementLifecycle,
-  persistWindowPlacement,
+  loadThreadPanelOpenRecord,
+  loadThreadPanelWidthRecord,
+  persistThreadPanelOpenRecord,
+  persistThreadPanelWidthRecord,
 } from "../../core/window/windowStateClient";
 import { resolveActiveCwd } from "../../core/workspace/workspaceStore";
 import { ApprovalDialog } from "../approval/ApprovalDialog";
@@ -145,6 +152,12 @@ type SelectorStage = "model" | "effort";
 
 const MODEL_SELECTOR_BACK_VALUE = "__back_to_model__";
 const EFFORT_SELECTOR_DEFAULT_VALUE = "__use_default_effort__";
+const APP_TOOLBAR_WIDTH = 56;
+const THREAD_PANEL_RESIZER_WIDTH = 8;
+const THREAD_PANEL_MIN_WIDTH = 220;
+const THREAD_PANEL_MAX_WIDTH = 560;
+const CHAT_PANE_MIN_WIDTH = 420;
+const DEFAULT_THREAD_PANEL_WIDTH = 320;
 const REASONING_EFFORTS = new Set<ReasoningEffort>([
   "none",
   "minimal",
@@ -218,10 +231,28 @@ function modelOptionsFromCatalog(catalog: ModelSummary[]): ComposerSelectOption[
   }));
 }
 
+function resolveThreadPanelMaxWidth(containerWidth: number | null): number {
+  if (containerWidth === null || !Number.isFinite(containerWidth) || containerWidth <= 0) {
+    return THREAD_PANEL_MAX_WIDTH;
+  }
+  const layoutConstrainedMax =
+    containerWidth - APP_TOOLBAR_WIDTH - THREAD_PANEL_RESIZER_WIDTH - CHAT_PANE_MIN_WIDTH;
+  return Math.max(
+    THREAD_PANEL_MIN_WIDTH,
+    Math.min(THREAD_PANEL_MAX_WIDTH, layoutConstrainedMax),
+  );
+}
+
+function clampThreadPanelWidth(width: number, containerWidth: number | null): number {
+  const max = resolveThreadPanelMaxWidth(containerWidth);
+  return Math.round(Math.min(max, Math.max(THREAD_PANEL_MIN_WIDTH, width)));
+}
+
 export function AppShell() {
   const [auth, setAuth] = useState<AuthMachineState>(initialAuthMachineState);
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  const [loadingThreadId, setLoadingThreadId] = useState<string | null>(null);
   const [turnState, dispatchTurn] = useReducer(
     reduceTurnStream,
     initialTurnStreamState,
@@ -234,6 +265,9 @@ export function AppShell() {
   const [selectedModel, setSelectedModel] = useState(FALLBACK_MODELS[0].model);
   const [selectedEffort, setSelectedEffort] = useState<ReasoningEffort | null>(null);
   const [selectorStage, setSelectorStage] = useState<SelectorStage>("model");
+  const [threadPanelOpen, setThreadPanelOpen] = useState(true);
+  const [threadPanelWidth, setThreadPanelWidth] = useState(DEFAULT_THREAD_PANEL_WIDTH);
+  const [threadPanelResizing, setThreadPanelResizing] = useState(false);
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [approvalBusy, setApprovalBusy] = useState(false);
@@ -243,18 +277,33 @@ export function AppShell() {
   const [startupAuthCheckPending, setStartupAuthCheckPending] = useState(true);
   const [startupAuthCheckSlow, setStartupAuthCheckSlow] = useState(false);
   const startupAuthCheckPendingRef = useRef(true);
+  const appMainRef = useRef<HTMLElement | null>(null);
   const authRefreshInFlightRef = useRef(false);
   const startupAuthSlowTimerRef = useRef<number | null>(null);
   const selectedModelRef = useRef(selectedModel);
+  const threadPanelWidthRef = useRef(threadPanelWidth);
+  const persistedThreadPanelOpenRef = useRef<boolean | null>(null);
+  const persistedThreadPanelWidthRef = useRef<number | null>(null);
+  const dragCleanupRef = useRef<(() => void) | null>(null);
   const pollInFlightRef = useRef(false);
   const autoCancelInFlightRef = useRef<Set<number>>(new Set());
   const localUserItemSeqRef = useRef(0);
+  const selectThreadRequestSeqRef = useRef(0);
 
   const activeApproval = useMemo(
     () => currentApproval(approvalState),
     [approvalState],
   );
   const turnItems = useMemo(() => orderedTurnItems(turnState), [turnState]);
+  const threadLoading =
+    loadingThreadId !== null && activeThreadId === loadingThreadId;
+  const appMainStyle = useMemo(
+    () =>
+      ({
+        "--thread-panel-width": `${threadPanelWidth}px`,
+      }) as CSSProperties,
+    [threadPanelWidth],
+  );
   const selectedModelSummary = useMemo(
     () => modelCatalog.find((model) => model.model === selectedModel) ?? null,
     [modelCatalog, selectedModel],
@@ -262,20 +311,25 @@ export function AppShell() {
 
   useEffect(() => {
     void initializeWindowPlacementLifecycle();
-    const handleBeforeUnload = () => {
-      void persistWindowPlacement();
-    };
-
-    window.addEventListener("beforeunload", handleBeforeUnload);
     return () => {
-      window.removeEventListener("beforeunload", handleBeforeUnload);
-      void persistWindowPlacement();
+      disposeWindowPlacementLifecycle();
     };
   }, []);
 
   useEffect(() => {
     selectedModelRef.current = selectedModel;
   }, [selectedModel]);
+
+  useEffect(() => {
+    threadPanelWidthRef.current = threadPanelWidth;
+  }, [threadPanelWidth]);
+
+  useEffect(() => {
+    return () => {
+      dragCleanupRef.current?.();
+      dragCleanupRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     if (authRefreshInFlightRef.current) {
@@ -358,7 +412,12 @@ export function AppShell() {
 
   useEffect(() => {
     if (auth.view !== "loggedIn") {
+      setShowSettings(false);
       setWorkspacePath(null);
+      setThreadPanelOpen(true);
+      setActiveThreadId(null);
+      setLoadingThreadId(null);
+      setThreads([]);
       return;
     }
 
@@ -369,9 +428,9 @@ export function AppShell() {
           return;
         }
         setThreads(loaded);
-        if (!activeThreadId && loaded.length > 0) {
-          setActiveThreadId(loaded[0].id);
-        }
+        setActiveThreadId((current) =>
+          current && loaded.some((thread) => thread.id === current) ? current : null,
+        );
       })
       .catch((reason) => {
         if (!cancelled) {
@@ -382,7 +441,7 @@ export function AppShell() {
     return () => {
       cancelled = true;
     };
-  }, [auth.view, activeThreadId]);
+  }, [auth.view]);
 
   useEffect(() => {
     if (auth.view !== "loggedIn") {
@@ -406,6 +465,90 @@ export function AppShell() {
       cancelled = true;
     };
   }, [auth.view]);
+
+  useEffect(() => {
+    if (auth.view !== "loggedIn") {
+      persistedThreadPanelOpenRef.current = null;
+      return;
+    }
+
+    let cancelled = false;
+    void loadThreadPanelOpenRecord()
+      .then((savedOpen) => {
+        if (cancelled || savedOpen === null) {
+          return;
+        }
+        persistedThreadPanelOpenRef.current = savedOpen;
+        setThreadPanelOpen(savedOpen);
+      })
+      .catch((reason) => {
+        if (!cancelled) {
+          setError(mapErrorToUserFacing(reason));
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [auth.view]);
+
+  useEffect(() => {
+    if (auth.view !== "loggedIn") {
+      setThreadPanelResizing(false);
+      return;
+    }
+
+    let cancelled = false;
+    void loadThreadPanelWidthRecord()
+      .then((savedWidth) => {
+        if (cancelled || savedWidth === null) {
+          return;
+        }
+        const clamped = clampThreadPanelWidth(
+          savedWidth,
+          appMainRef.current?.clientWidth ?? null,
+        );
+        persistedThreadPanelWidthRef.current = clamped;
+        setThreadPanelWidth(clamped);
+      })
+      .catch((reason) => {
+        if (!cancelled) {
+          setError(mapErrorToUserFacing(reason));
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [auth.view]);
+
+  useEffect(() => {
+    function handleResize(): void {
+      setThreadPanelWidth((current) =>
+        clampThreadPanelWidth(current, appMainRef.current?.clientWidth ?? null),
+      );
+    }
+
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!showSettings) {
+      return;
+    }
+    function handleKeyDown(event: KeyboardEvent): void {
+      if (event.key === "Escape") {
+        setShowSettings(false);
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [showSettings]);
 
   useEffect(() => {
     if (auth.view !== "loggedIn") {
@@ -559,6 +702,8 @@ export function AppShell() {
   }
 
   async function handleCreateThread(): Promise<void> {
+    selectThreadRequestSeqRef.current += 1;
+    setLoadingThreadId(null);
     setBusy(true);
     try {
       const started = await startThread();
@@ -574,9 +719,17 @@ export function AppShell() {
   }
 
   async function handleSelectThread(threadId: string): Promise<void> {
+    selectThreadRequestSeqRef.current += 1;
+    const requestSeq = selectThreadRequestSeqRef.current;
+    setActiveThreadId(threadId);
+    setLoadingThreadId(threadId);
+    dispatchTurn({ type: "resetThread", threadId });
     setBusy(true);
     try {
       const resumed = await resumeThread(threadId);
+      if (requestSeq !== selectThreadRequestSeqRef.current) {
+        return;
+      }
       setActiveThreadId(resumed.threadId);
       setWorkspacePath(resumed.cwd);
       dispatchTurn({
@@ -585,9 +738,15 @@ export function AppShell() {
         items: resumed.historyItems,
       });
     } catch (reason) {
+      if (requestSeq !== selectThreadRequestSeqRef.current) {
+        return;
+      }
       setError(mapErrorToUserFacing(reason));
     } finally {
-      setBusy(false);
+      if (requestSeq === selectThreadRequestSeqRef.current) {
+        setLoadingThreadId(null);
+        setBusy(false);
+      }
     }
   }
 
@@ -737,6 +896,87 @@ export function AppShell() {
     setAuthRefreshKey((current) => current + 1);
   }
 
+  function persistThreadPanelWidthIfChanged(width: number): void {
+    if (persistedThreadPanelWidthRef.current === width) {
+      return;
+    }
+    persistedThreadPanelWidthRef.current = width;
+    void persistThreadPanelWidthRecord(width).catch((reason) => {
+      setError(mapErrorToUserFacing(reason));
+    });
+  }
+
+  function persistThreadPanelOpenIfChanged(open: boolean): void {
+    if (persistedThreadPanelOpenRef.current === open) {
+      return;
+    }
+    persistedThreadPanelOpenRef.current = open;
+    void persistThreadPanelOpenRecord(open).catch((reason) => {
+      setError(mapErrorToUserFacing(reason));
+    });
+  }
+
+  function handleToggleThreadPanel(): void {
+    if (auth.view !== "loggedIn") {
+      return;
+    }
+
+    setThreadPanelOpen((current) => {
+      const nextOpen = !current;
+      if (!nextOpen) {
+        dragCleanupRef.current?.();
+        dragCleanupRef.current = null;
+        setThreadPanelResizing(false);
+        setShowSettings(false);
+      }
+      persistThreadPanelOpenIfChanged(nextOpen);
+      return nextOpen;
+    });
+  }
+
+  function handleThreadPanelResizeStart(
+    event: ReactPointerEvent<HTMLDivElement>,
+  ): void {
+    if (
+      event.button !== 0 ||
+      auth.view !== "loggedIn" ||
+      !threadPanelOpen
+    ) {
+      return;
+    }
+
+    dragCleanupRef.current?.();
+    dragCleanupRef.current = null;
+
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = threadPanelWidthRef.current;
+    setThreadPanelResizing(true);
+
+    const handlePointerMove = (moveEvent: PointerEvent): void => {
+      const delta = moveEvent.clientX - startX;
+      const next = clampThreadPanelWidth(
+        startWidth + delta,
+        appMainRef.current?.clientWidth ?? null,
+      );
+      setThreadPanelWidth(next);
+    };
+
+    const finishResize = (): void => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", finishResize);
+      window.removeEventListener("pointercancel", finishResize);
+      dragCleanupRef.current = null;
+      setThreadPanelResizing(false);
+      persistThreadPanelWidthIfChanged(threadPanelWidthRef.current);
+    };
+
+    dragCleanupRef.current = finishResize;
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", finishResize);
+    window.addEventListener("pointercancel", finishResize);
+  }
+
   const selectorLabel =
     selectorStage === "model"
       ? "Select model"
@@ -813,41 +1053,72 @@ export function AppShell() {
   }
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${threadPanelResizing ? "is-resizing-thread-panel" : ""}`}>
       {error ? <ErrorBanner error={error} onDismiss={() => setError(null)} /> : null}
 
       {auth.view === "loggedIn" ? (
-        <main className="app-main">
-          <ThreadListPanel
-            threads={threads}
-            activeThreadId={activeThreadId}
-            busy={busy}
-            onRefreshThreads={() => void refreshThreads()}
-            onSelectThread={(threadId) => void handleSelectThread(threadId)}
-            onOpenSettings={() => setShowSettings((current) => !current)}
-          />
+        <main
+          className={`app-main ${threadPanelOpen ? "" : "is-thread-panel-collapsed"}`}
+          ref={appMainRef}
+          style={appMainStyle}
+        >
+          <aside className="app-sidebar-toolbar" aria-label="navigation toolbar">
+            <button
+              type="button"
+              className={`toolbar-button ${threadPanelOpen ? "is-active" : ""}`}
+              aria-label="Toggle thread panel"
+              title={threadPanelOpen ? "Hide threads" : "Show threads"}
+              onClick={handleToggleThreadPanel}
+            >
+              <List size={17} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className={`toolbar-button toolbar-button-settings ${showSettings ? "is-active" : ""}`}
+              aria-label="Open settings"
+              title="Settings"
+              onClick={() => setShowSettings(true)}
+            >
+              <Settings size={17} aria-hidden="true" />
+            </button>
+          </aside>
+          {threadPanelOpen ? (
+            <>
+              <ThreadListPanel
+                threads={threads}
+                activeThreadId={activeThreadId}
+                busy={busy}
+                onRefreshThreads={() => void refreshThreads()}
+                onSelectThread={(threadId) => void handleSelectThread(threadId)}
+              />
+              <div
+                className={`thread-panel-resizer ${threadPanelResizing ? "is-dragging" : ""}`}
+                role="separator"
+                aria-label="Resize thread panel"
+                aria-orientation="vertical"
+                onPointerDown={handleThreadPanelResizeStart}
+              />
+            </>
+          ) : null}
 
           <section className="main-content">
-            {showSettings ? (
-              <SettingsView />
-            ) : (
-              <ChatView
-                turnState={turnState}
-                items={turnItems}
-                workspacePath={workspacePath}
-                composerValue={composerValue}
-                selectorLabel={selectorLabel}
-                selectorDisplay={selectorDisplay}
-                selectorOptions={selectorOptions}
-                selectorValue={selectorValue}
-                busy={busy}
-                onComposerChange={setComposerValue}
-                onSelectorChange={handleComposerSelectorChange}
-                onCreateThread={() => void handleCreateThread()}
-                onSubmitPrompt={() => void handleSubmitPrompt()}
-                onInterrupt={() => void handleInterruptTurn()}
-              />
-            )}
+            <ChatView
+              turnState={turnState}
+              items={turnItems}
+              threadLoading={threadLoading}
+              workspacePath={workspacePath}
+              composerValue={composerValue}
+              selectorLabel={selectorLabel}
+              selectorDisplay={selectorDisplay}
+              selectorOptions={selectorOptions}
+              selectorValue={selectorValue}
+              busy={busy}
+              onComposerChange={setComposerValue}
+              onSelectorChange={handleComposerSelectorChange}
+              onCreateThread={() => void handleCreateThread()}
+              onSubmitPrompt={() => void handleSubmitPrompt()}
+              onInterrupt={() => void handleInterruptTurn()}
+            />
           </section>
         </main>
       ) : (
@@ -864,6 +1135,33 @@ export function AppShell() {
           />
         </main>
       )}
+
+      {auth.view === "loggedIn" && showSettings ? (
+        <div
+          className="settings-modal-overlay"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setShowSettings(false);
+            }
+          }}
+        >
+          <section className="settings-modal" role="dialog" aria-modal="true" aria-label="Settings">
+            <button
+              type="button"
+              className="settings-modal-close"
+              onClick={() => setShowSettings(false)}
+              aria-label="Close settings"
+              title="Close"
+            >
+              <X size={17} aria-hidden="true" />
+            </button>
+            <div className="settings-modal-body">
+              <SettingsView />
+            </div>
+          </section>
+        </div>
+      ) : null}
 
       <ApprovalDialog
         request={activeApproval}

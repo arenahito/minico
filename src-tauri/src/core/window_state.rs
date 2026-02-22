@@ -11,7 +11,8 @@ use super::session_runtime::run_blocking_task;
 
 const MIN_WIDTH: u32 = 480;
 const MIN_HEIGHT: u32 = 360;
-const MAX_USAGE_RATIO: f64 = 0.95;
+const MIN_THREAD_PANEL_WIDTH: u32 = 220;
+const MAX_THREAD_PANEL_WIDTH: u32 = 560;
 
 #[tauri::command]
 pub fn window_restore_placement(
@@ -31,21 +32,47 @@ pub async fn window_persist_placement(placement: WindowPlacement) -> Result<(), 
     .await
 }
 
+#[tauri::command]
+pub async fn window_read_thread_panel_width() -> Result<Option<u32>, String> {
+    run_blocking_task(move || {
+        let config_path = paths::config_file_path().map_err(|error| error.to_string())?;
+        read_thread_panel_width_from_path(&config_path).map_err(|error| error.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn window_persist_thread_panel_width(width: u32) -> Result<(), String> {
+    run_blocking_task(move || {
+        let config_path = paths::config_file_path().map_err(|error| error.to_string())?;
+        persist_thread_panel_width_to_path(&config_path, width).map_err(|error| error.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn window_read_thread_panel_open() -> Result<Option<bool>, String> {
+    run_blocking_task(move || {
+        let config_path = paths::config_file_path().map_err(|error| error.to_string())?;
+        read_thread_panel_open_from_path(&config_path).map_err(|error| error.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn window_persist_thread_panel_open(open: bool) -> Result<(), String> {
+    run_blocking_task(move || {
+        let config_path = paths::config_file_path().map_err(|error| error.to_string())?;
+        persist_thread_panel_open_to_path(&config_path, open).map_err(|error| error.to_string())
+    })
+    .await
+}
+
 pub fn restore_window_placement(
     mut saved: WindowPlacement,
     monitors: &[MonitorWorkArea],
     current_scale_factor: Option<f64>,
 ) -> WindowPlacement {
-    if let (Some(saved_scale), Some(current_scale)) = (saved.scale_factor, current_scale_factor) {
-        if saved_scale > 0.0 && current_scale > 0.0 {
-            let scale_ratio = saved_scale / current_scale;
-            saved.width = (saved.width as f64 * scale_ratio).round().max(1.0) as u32;
-            saved.height = (saved.height as f64 * scale_ratio).round().max(1.0) as u32;
-            saved.x = (saved.x as f64 * scale_ratio).round() as i32;
-            saved.y = (saved.y as f64 * scale_ratio).round() as i32;
-        }
-    }
-
     let Some(primary) = primary_monitor(monitors) else {
         saved.width = saved.width.max(MIN_WIDTH);
         saved.height = saved.height.max(MIN_HEIGHT);
@@ -66,11 +93,6 @@ pub fn restore_window_placement(
     if !visible {
         target_monitor = primary;
     }
-
-    let max_width = (target_monitor.width as f64 * MAX_USAGE_RATIO).round() as u32;
-    let max_height = (target_monitor.height as f64 * MAX_USAGE_RATIO).round() as u32;
-    saved.width = saved.width.clamp(MIN_WIDTH, max_width.max(MIN_WIDTH));
-    saved.height = saved.height.clamp(MIN_HEIGHT, max_height.max(MIN_HEIGHT));
 
     if visible {
         let min_x = target_monitor.x;
@@ -98,13 +120,49 @@ pub fn persist_window_placement_to_path(
     save_system_update(config_path, &config)
 }
 
+pub fn read_thread_panel_width_from_path(config_path: &Path) -> Result<Option<u32>, ConfigError> {
+    let config = load_or_default(config_path)?;
+    Ok(config.window.thread_panel_width)
+}
+
+pub fn persist_thread_panel_width_to_path(
+    config_path: &Path,
+    width: u32,
+) -> Result<(), ConfigError> {
+    let mut config = load_or_default(config_path)?;
+    config.window.thread_panel_width = Some(width.clamp(
+        MIN_THREAD_PANEL_WIDTH,
+        MAX_THREAD_PANEL_WIDTH,
+    ));
+    save_system_update(config_path, &config)
+}
+
+pub fn read_thread_panel_open_from_path(config_path: &Path) -> Result<Option<bool>, ConfigError> {
+    let config = load_or_default(config_path)?;
+    Ok(config.window.thread_panel_open)
+}
+
+pub fn persist_thread_panel_open_to_path(
+    config_path: &Path,
+    open: bool,
+) -> Result<(), ConfigError> {
+    let mut config = load_or_default(config_path)?;
+    config.window.thread_panel_open = Some(open);
+    save_system_update(config_path, &config)
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
 
     use super::super::config::{save_system_update, MinicoConfig, WindowPlacement};
     use super::super::monitor::MonitorWorkArea;
-    use super::{persist_window_placement_to_path, restore_window_placement};
+    use super::{
+        persist_thread_panel_open_to_path, persist_thread_panel_width_to_path,
+        persist_window_placement_to_path,
+        read_thread_panel_open_from_path, read_thread_panel_width_from_path,
+        restore_window_placement,
+    };
     use tempfile::TempDir;
 
     fn primary_monitor() -> MonitorWorkArea {
@@ -149,27 +207,30 @@ mod tests {
 
         assert!(restored.x >= 0);
         assert!(restored.y >= 0);
-        assert!(restored.width <= 1824);
-        assert!(restored.height <= 1026);
+        assert_eq!(restored.width, 1200);
+        assert_eq!(restored.height, 900);
     }
 
     #[test]
-    fn keeps_window_on_visible_monitor_with_clamping() {
+    fn keeps_window_on_visible_monitor_without_resizing() {
         let saved = placement(1700, 50, 1800, 900);
         let restored =
             restore_window_placement(saved, &[primary_monitor(), secondary_monitor()], Some(1.0));
 
         assert!(restored.x >= 0);
         assert!(restored.x + restored.width as i32 <= 3840);
+        assert_eq!(restored.width, 1800);
+        assert_eq!(restored.height, 900);
     }
 
     #[test]
-    fn rescales_saved_placement_when_scale_changes() {
+    fn preserves_saved_size_when_scale_changes() {
         let mut saved = placement(100, 100, 1200, 800);
         saved.scale_factor = Some(2.0);
 
         let restored = restore_window_placement(saved, &[primary_monitor()], Some(1.0));
-        assert_eq!(restored.width, 1824);
+        assert_eq!(restored.width, 1200);
+        assert_eq!(restored.height, 800);
         assert_eq!(restored.scale_factor, Some(1.0));
     }
 
@@ -192,5 +253,31 @@ mod tests {
 
         let next = placement(40, 50, 900, 700);
         persist_window_placement_to_path(&config_path, next).expect("persist");
+    }
+
+    #[test]
+    fn persists_thread_panel_width_without_codex_path_validation_blocking() {
+        let temp = TempDir::new().expect("temp dir");
+        let config_path = temp.path().join("config.json");
+        let mut config = MinicoConfig::default();
+        config.codex.path = Some(temp.path().join("missing-codex.exe").display().to_string());
+        save_system_update(&config_path, &config).expect("seed config");
+
+        persist_thread_panel_width_to_path(&config_path, 430).expect("persist");
+        let read_back = read_thread_panel_width_from_path(&config_path).expect("read");
+        assert_eq!(read_back, Some(430));
+    }
+
+    #[test]
+    fn persists_thread_panel_open_without_codex_path_validation_blocking() {
+        let temp = TempDir::new().expect("temp dir");
+        let config_path = temp.path().join("config.json");
+        let mut config = MinicoConfig::default();
+        config.codex.path = Some(temp.path().join("missing-codex.exe").display().to_string());
+        save_system_update(&config_path, &config).expect("seed config");
+
+        persist_thread_panel_open_to_path(&config_path, false).expect("persist");
+        let read_back = read_thread_panel_open_from_path(&config_path).expect("read");
+        assert_eq!(read_back, Some(false));
     }
 }

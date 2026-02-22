@@ -35,6 +35,7 @@ describe("ChatView", () => {
       <ChatView
         turnState={turnState("turn-1")}
         items={[]}
+        threadLoading={false}
         workspacePath="C:/workspace/demo"
         composerValue=""
         selectorLabel="Select model"
@@ -60,6 +61,7 @@ describe("ChatView", () => {
       <ChatView
         turnState={turnState(null)}
         items={[]}
+        threadLoading={false}
         workspacePath="C:/workspace/demo"
         composerValue=""
         selectorLabel="Select model"
@@ -79,11 +81,37 @@ describe("ChatView", () => {
     expect(screen.getByText("No streamed items yet. Send a prompt to begin.")).toBeVisible();
   });
 
+  it("shows loading status while selected thread is loading", () => {
+    render(
+      <ChatView
+        turnState={turnState(null)}
+        items={[item({ text: "stale response" })]}
+        threadLoading
+        workspacePath="C:/workspace/demo"
+        composerValue=""
+        selectorLabel="Select model"
+        selectorDisplay="gpt-5 / medium"
+        selectorOptions={[{ value: "gpt-5", label: "gpt-5" }]}
+        selectorValue="gpt-5"
+        busy={false}
+        onComposerChange={vi.fn()}
+        onSelectorChange={vi.fn(() => true)}
+        onCreateThread={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+        onInterrupt={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Loading selected thread...")).toBeVisible();
+    expect(screen.queryByText("stale response")).toBeNull();
+  });
+
   it("keeps existing message bubbles while showing thinking indicator", () => {
     render(
       <ChatView
         turnState={turnState("turn-2")}
         items={[item({ text: "existing response" })]}
+        threadLoading={false}
         workspacePath="C:/workspace/demo"
         composerValue=""
         selectorLabel="Select model"
@@ -103,12 +131,70 @@ describe("ChatView", () => {
     expect(screen.getByLabelText("minico thinking indicator")).toBeVisible();
   });
 
+  it("does not render duplicate thinking bubble while agent item is in progress", () => {
+    render(
+      <ChatView
+        turnState={turnState("turn-3")}
+        items={[item({ completed: false, text: "" })]}
+        threadLoading={false}
+        workspacePath="C:/workspace/demo"
+        composerValue=""
+        selectorLabel="Select model"
+        selectorDisplay="gpt-5 / medium"
+        selectorOptions={[{ value: "gpt-5", label: "gpt-5" }]}
+        selectorValue="gpt-5"
+        busy={false}
+        onComposerChange={vi.fn()}
+        onSelectorChange={vi.fn(() => true)}
+        onCreateThread={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+        onInterrupt={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByLabelText("minico thinking indicator")).toBeNull();
+    expect(screen.getAllByText("minico is thinking...")).toHaveLength(1);
+  });
+
+  it("renders agent response as markdown", () => {
+    render(
+      <ChatView
+        turnState={turnState(null)}
+        items={[
+          item({
+            text: "**bold**\n\n- first item\n- second item\n\n[OpenAI](https://openai.com)",
+          }),
+        ]}
+        threadLoading={false}
+        workspacePath="C:/workspace/demo"
+        composerValue=""
+        selectorLabel="Select model"
+        selectorDisplay="gpt-5 / medium"
+        selectorOptions={[{ value: "gpt-5", label: "gpt-5" }]}
+        selectorValue="gpt-5"
+        busy={false}
+        onComposerChange={vi.fn()}
+        onSelectorChange={vi.fn(() => true)}
+        onCreateThread={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+        onInterrupt={vi.fn()}
+      />,
+    );
+
+    const link = screen.getByRole("link", { name: "OpenAI" });
+    expect(link).toHaveAttribute("href", "https://openai.com");
+    expect(screen.getByText("bold", { selector: "strong" })).toBeVisible();
+    expect(screen.getByText("first item")).toBeVisible();
+    expect(screen.getByText("second item")).toBeVisible();
+  });
+
   it("submits prompt with ctrl+enter", () => {
     const onSubmitPrompt = vi.fn();
     render(
       <ChatView
         turnState={turnState(null)}
         items={[]}
+        threadLoading={false}
         workspacePath="C:/workspace/demo"
         composerValue="hello"
         selectorLabel="Select model"
@@ -134,6 +220,7 @@ describe("ChatView", () => {
       <ChatView
         turnState={turnState(null)}
         items={[]}
+        threadLoading={false}
         workspacePath="C:/workspace/demo"
         composerValue="   "
         selectorLabel="Select model"

@@ -1,4 +1,5 @@
 import type { ThreadSummary } from "../../core/chat/threadService";
+import { RefreshCw } from "lucide-react";
 
 interface ThreadListPanelProps {
   threads: ThreadSummary[];
@@ -6,7 +7,6 @@ interface ThreadListPanelProps {
   busy: boolean;
   onRefreshThreads: () => void;
   onSelectThread: (threadId: string) => void;
-  onOpenSettings: () => void;
 }
 
 export function ThreadListPanel({
@@ -15,18 +15,21 @@ export function ThreadListPanel({
   busy,
   onRefreshThreads,
   onSelectThread,
-  onOpenSettings,
 }: ThreadListPanelProps) {
   return (
     <aside className="thread-panel" aria-label="thread list panel">
       <div className="thread-panel-header">
         <h2>Threads</h2>
         <div className="thread-panel-actions">
-          <button type="button" onClick={onRefreshThreads} disabled={busy}>
-            Refresh
-          </button>
-          <button type="button" onClick={onOpenSettings}>
-            Settings
+          <button
+            type="button"
+            className="thread-panel-refresh-button"
+            onClick={onRefreshThreads}
+            disabled={busy}
+            aria-label="Refresh threads"
+            title="Refresh threads"
+          >
+            <RefreshCw size={15} aria-hidden="true" />
           </button>
         </div>
       </div>

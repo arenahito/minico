@@ -23,6 +23,8 @@ export interface MinicoConfig {
   };
   window: {
     placement: WindowPlacement;
+    threadPanelWidth?: number | null;
+    threadPanelOpen?: boolean | null;
   };
 }
 

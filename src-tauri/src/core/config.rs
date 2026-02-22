@@ -83,6 +83,10 @@ pub enum LogLevel {
 #[serde(default)]
 pub struct WindowConfig {
     pub placement: WindowPlacement,
+    #[serde(rename = "threadPanelWidth")]
+    pub thread_panel_width: Option<u32>,
+    #[serde(rename = "threadPanelOpen")]
+    pub thread_panel_open: Option<bool>,
     #[serde(flatten)]
     pub extra: HashMap<String, serde_json::Value>,
 }
@@ -303,6 +307,8 @@ mod tests {
         assert_eq!(config.workspace.last_path, None);
         assert_eq!(config.diagnostics.log_level, LogLevel::Info);
         assert_eq!(config.window.placement.width, 980);
+        assert_eq!(config.window.thread_panel_width, None);
+        assert_eq!(config.window.thread_panel_open, None);
         assert!(config.extra.is_empty());
     }
 

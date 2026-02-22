@@ -1,11 +1,16 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { AppShell } from "./AppShell";
 
 const initializeWindowPlacementLifecycle = vi.fn().mockResolvedValue(undefined);
+const disposeWindowPlacementLifecycle = vi.fn();
 const persistWindowPlacement = vi.fn().mockResolvedValue(undefined);
+const loadThreadPanelOpenRecord = vi.fn().mockResolvedValue(null);
+const loadThreadPanelWidthRecord = vi.fn().mockResolvedValue(null);
+const persistThreadPanelOpenRecord = vi.fn().mockResolvedValue(undefined);
+const persistThreadPanelWidthRecord = vi.fn().mockResolvedValue(undefined);
 const openUrl = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -17,9 +22,19 @@ vi.mock("@tauri-apps/plugin-opener", () => ({
 }));
 
 vi.mock("../../core/window/windowStateClient", () => ({
+  disposeWindowPlacementLifecycle: (...args: unknown[]) =>
+    disposeWindowPlacementLifecycle(...args),
   initializeWindowPlacementLifecycle: (...args: unknown[]) =>
     initializeWindowPlacementLifecycle(...args),
   persistWindowPlacement: (...args: unknown[]) => persistWindowPlacement(...args),
+  loadThreadPanelOpenRecord: (...args: unknown[]) =>
+    loadThreadPanelOpenRecord(...args),
+  loadThreadPanelWidthRecord: (...args: unknown[]) =>
+    loadThreadPanelWidthRecord(...args),
+  persistThreadPanelOpenRecord: (...args: unknown[]) =>
+    persistThreadPanelOpenRecord(...args),
+  persistThreadPanelWidthRecord: (...args: unknown[]) =>
+    persistThreadPanelWidthRecord(...args),
 }));
 
 vi.mock("../settings/SettingsView", () => ({
@@ -28,6 +43,14 @@ vi.mock("../settings/SettingsView", () => ({
 
 const mockedInvoke = vi.mocked(invoke);
 
+function deferred<T>() {
+  let resolve: (value: T) => void = () => undefined;
+  const promise = new Promise<T>((innerResolve) => {
+    resolve = innerResolve;
+  });
+  return { promise, resolve };
+}
+
 describe("AppShell", () => {
   afterEach(() => {
     cleanup();
@@ -35,8 +58,15 @@ describe("AppShell", () => {
 
   beforeEach(() => {
     mockedInvoke.mockReset();
+    disposeWindowPlacementLifecycle.mockClear();
     initializeWindowPlacementLifecycle.mockClear();
     persistWindowPlacement.mockClear();
+    loadThreadPanelOpenRecord.mockClear();
+    loadThreadPanelOpenRecord.mockResolvedValue(null);
+    loadThreadPanelWidthRecord.mockClear();
+    loadThreadPanelWidthRecord.mockResolvedValue(null);
+    persistThreadPanelOpenRecord.mockClear();
+    persistThreadPanelWidthRecord.mockClear();
     openUrl.mockClear();
   });
 
@@ -144,7 +174,51 @@ describe("AppShell", () => {
 
     unmount();
     expect(initializeWindowPlacementLifecycle).toHaveBeenCalled();
-    expect(persistWindowPlacement).toHaveBeenCalled();
+    expect(disposeWindowPlacementLifecycle).toHaveBeenCalled();
+  });
+
+  it("opens settings in a modal from the left toolbar", async () => {
+    const user = userEvent.setup();
+    mockedInvoke.mockImplementation(async (command) => {
+      if (command === "auth_read_status") {
+        return {
+          state: "loggedIn",
+          accountEmail: "demo@example.com",
+          requiresOpenaiAuth: false,
+          rawAuthMode: "chatgpt",
+          message: null,
+        };
+      }
+      if (command === "thread_list") {
+        return { threads: [] };
+      }
+      if (command === "workspace_resolve_active_cwd") {
+        return {
+          cwd: "C:/workspace/demo",
+          fallbackUsed: false,
+          warning: null,
+        };
+      }
+      if (command === "session_poll_events") {
+        return [];
+      }
+      return undefined;
+    });
+
+    render(<AppShell />);
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { level: 2, name: "Threads" })).toBeVisible();
+    });
+    expect(screen.queryByRole("dialog", { name: "Settings" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Open settings" }));
+    expect(screen.getByRole("dialog", { name: "Settings" })).toBeVisible();
+    expect(screen.getByLabelText("settings mock")).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "Close settings" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Settings" })).toBeNull();
+    });
   });
 
   it("re-reads auth status after login completion success notification", async () => {
@@ -344,12 +418,103 @@ describe("AppShell", () => {
     await waitFor(() => {
       expect(screen.getByText("second")).toBeVisible();
     });
+    expect(screen.getByRole("button", { name: /first/i })).toHaveAttribute(
+      "aria-selected",
+      "false",
+    );
+    expect(screen.getByRole("button", { name: /second/i })).toHaveAttribute(
+      "aria-selected",
+      "false",
+    );
+    expect(screen.queryByText("Loading selected thread...")).toBeNull();
 
     await user.click(screen.getByRole("button", { name: /second/i }));
 
     await waitFor(() => {
       expect(screen.getByText("question")).toBeVisible();
       expect(screen.getByText("answer")).toBeVisible();
+    });
+  });
+
+  it("updates selection immediately and shows loading state while resuming thread", async () => {
+    const user = userEvent.setup();
+    const resumeDeferred = deferred<unknown>();
+
+    mockedInvoke.mockImplementation(async (command, args) => {
+      if (command === "auth_read_status") {
+        return {
+          state: "loggedIn",
+          accountEmail: "demo@example.com",
+          requiresOpenaiAuth: false,
+          rawAuthMode: "chatgpt",
+          message: null,
+        };
+      }
+      if (command === "thread_list") {
+        return {
+          threads: [
+            { id: "thread-1", name: null, preview: "first" },
+            { id: "thread-2", name: null, preview: "second" },
+          ],
+        };
+      }
+      if (command === "workspace_resolve_active_cwd") {
+        return {
+          cwd: "C:/workspace/demo",
+          fallbackUsed: false,
+          warning: null,
+        };
+      }
+      if (command === "thread_resume") {
+        expect(args).toEqual({ threadId: "thread-2" });
+        return resumeDeferred.promise;
+      }
+      if (command === "model_list") {
+        return { models: [] };
+      }
+      if (command === "session_poll_events") {
+        return [];
+      }
+      return undefined;
+    });
+
+    render(<AppShell />);
+    await waitFor(() => {
+      expect(screen.getByText("second")).toBeVisible();
+    });
+
+    const secondThreadButton = screen.getByRole("button", { name: /second/i });
+    await user.click(secondThreadButton);
+
+    expect(secondThreadButton).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("Loading selected thread...")).toBeVisible();
+
+    resumeDeferred.resolve({
+      threadId: "thread-2",
+      cwd: "C:/workspace/demo",
+      workspaceFallbackUsed: false,
+      workspaceWarning: null,
+      historyItems: [
+        {
+          id: "item-user-2",
+          itemType: "userMessage",
+          role: "user",
+          text: "follow-up",
+          completed: true,
+        },
+        {
+          id: "item-agent-2",
+          itemType: "agentMessage",
+          role: "agent",
+          text: "resolved",
+          completed: true,
+        },
+      ],
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("follow-up")).toBeVisible();
+      expect(screen.getByText("resolved")).toBeVisible();
     });
   });
 
@@ -439,6 +604,110 @@ describe("AppShell", () => {
         model: "gpt-5-mini",
         effort: "high",
       });
+    });
+  });
+
+  it("restores thread panel width and persists updated width after dragging", async () => {
+    loadThreadPanelWidthRecord.mockResolvedValueOnce(420);
+    mockedInvoke.mockImplementation(async (command) => {
+      if (command === "auth_read_status") {
+        return {
+          state: "loggedIn",
+          accountEmail: "demo@example.com",
+          requiresOpenaiAuth: false,
+          rawAuthMode: "chatgpt",
+          message: null,
+        };
+      }
+      if (command === "thread_list") {
+        return { threads: [] };
+      }
+      if (command === "model_list") {
+        return { models: [] };
+      }
+      if (command === "workspace_resolve_active_cwd") {
+        return {
+          cwd: "C:/workspace/demo",
+          fallbackUsed: false,
+          warning: null,
+        };
+      }
+      if (command === "session_poll_events") {
+        return [];
+      }
+      return undefined;
+    });
+
+    render(<AppShell />);
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { level: 2, name: "Threads" })).toBeVisible();
+    });
+
+    const appMain = screen.getByRole("main");
+    await waitFor(() => {
+      expect(appMain).toHaveStyle("--thread-panel-width: 420px");
+    });
+
+    const resizer = screen.getByRole("separator", { name: "Resize thread panel" });
+    fireEvent.pointerDown(resizer, { button: 0, clientX: 420 });
+    fireEvent.pointerMove(window, { clientX: 470 });
+    fireEvent.pointerUp(window);
+
+    await waitFor(() => {
+      expect(persistThreadPanelWidthRecord).toHaveBeenCalledWith(470);
+    });
+  });
+
+  it("restores thread panel open state and persists toggle", async () => {
+    const user = userEvent.setup();
+    loadThreadPanelOpenRecord.mockResolvedValueOnce(false);
+    mockedInvoke.mockImplementation(async (command) => {
+      if (command === "auth_read_status") {
+        return {
+          state: "loggedIn",
+          accountEmail: "demo@example.com",
+          requiresOpenaiAuth: false,
+          rawAuthMode: "chatgpt",
+          message: null,
+        };
+      }
+      if (command === "thread_list") {
+        return { threads: [{ id: "thread-1", name: null, preview: "first" }] };
+      }
+      if (command === "model_list") {
+        return { models: [] };
+      }
+      if (command === "workspace_resolve_active_cwd") {
+        return {
+          cwd: "C:/workspace/demo",
+          fallbackUsed: false,
+          warning: null,
+        };
+      }
+      if (command === "session_poll_events") {
+        return [];
+      }
+      return undefined;
+    });
+
+    render(<AppShell />);
+    await waitFor(() => {
+      expect(screen.queryByRole("heading", { level: 2, name: "Threads" })).toBeNull();
+    });
+
+    const toggleButton = screen.getByRole("button", { name: "Toggle thread panel" });
+    await user.click(toggleButton);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { level: 2, name: "Threads" })).toBeVisible();
+      expect(persistThreadPanelOpenRecord).toHaveBeenCalledWith(true);
+    });
+
+    await user.click(toggleButton);
+
+    await waitFor(() => {
+      expect(screen.queryByRole("heading", { level: 2, name: "Threads" })).toBeNull();
+      expect(persistThreadPanelOpenRecord).toHaveBeenCalledWith(false);
     });
   });
 });

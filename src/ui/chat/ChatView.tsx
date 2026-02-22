@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import type { TurnStreamItem, TurnStreamState } from "../../core/chat/turnReducer";
 import { ChevronDown, ListPlus, Paperclip, Send, Square } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 export interface ComposerSelectOption {
   value: string;
@@ -10,6 +12,7 @@ export interface ComposerSelectOption {
 interface ChatViewProps {
   turnState: TurnStreamState;
   items: TurnStreamItem[];
+  threadLoading: boolean;
   workspacePath: string | null;
   composerValue: string;
   selectorLabel: string;
@@ -27,6 +30,7 @@ interface ChatViewProps {
 export function ChatView({
   turnState,
   items,
+  threadLoading,
   workspacePath,
   composerValue,
   selectorLabel,
@@ -44,7 +48,6 @@ export function ChatView({
   const selectorRootRef = useRef<HTMLDivElement | null>(null);
   const [fileHint, setFileHint] = useState<string | null>(null);
   const [selectorOpen, setSelectorOpen] = useState(false);
-  const showAgentTypingIndicator = Boolean(turnState.activeTurnId);
   const canSubmit = !busy && composerValue.trim().length > 0;
   const visibleItems = items.filter((item) => {
     const text = item.text.trim();
@@ -56,6 +59,12 @@ export function ChatView({
     }
     return true;
   });
+  const renderedItems = threadLoading ? [] : visibleItems;
+  const hasPendingAgentItem = renderedItems.some(
+    (item) => item.role === "agent" && !item.completed,
+  );
+  const showAgentTypingIndicator =
+    !threadLoading && Boolean(turnState.activeTurnId) && !hasPendingAgentItem;
 
   function handlePickFile(): void {
     fileInputRef.current?.click();
@@ -96,21 +105,26 @@ export function ChatView({
 
   return (
     <section className="chat-view" aria-label="chat view">
-      <header className="chat-view-header">
-        <p className="chat-workspace-path" title={workspacePath ?? ""}>
-          <code>{workspacePath ?? "(resolving workspace path...)"}</code>
-        </p>
-      </header>
-
       <div className="chat-stream" aria-live="polite">
-        {visibleItems.map((item) => (
+        {threadLoading ? (
+          <p className="chat-loading">Loading selected thread...</p>
+        ) : null}
+        {renderedItems.map((item) => (
           <article
             key={item.id}
             className={`chat-item ${
               item.role === "user" ? "chat-item-user" : "chat-item-agent"
             }`}
           >
-            <p className="chat-item-body">{item.text || "..."}</p>
+            {item.role === "user" ? (
+              <p className="chat-item-body">{item.text || "..."}</p>
+            ) : (
+              <div className="chat-item-body chat-item-markdown">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {item.text || "..."}
+                </ReactMarkdown>
+              </div>
+            )}
             {!item.completed ? (
               <footer className="chat-item-meta">
                 <span className="chat-item-state">minico is thinking...</span>
@@ -131,12 +145,15 @@ export function ChatView({
             <p className="typing-label">minico is thinking...</p>
           </article>
         ) : null}
-        {visibleItems.length === 0 && !showAgentTypingIndicator ? (
+        {renderedItems.length === 0 && !showAgentTypingIndicator && !threadLoading ? (
           <p className="chat-empty">No streamed items yet. Send a prompt to begin.</p>
         ) : null}
       </div>
 
       <div className="composer">
+        <p className="chat-turn-cwd" title={workspacePath ?? ""}>
+          <code>{workspacePath ?? "(resolving cwd...)"}</code>
+        </p>
         <textarea
           id="promptInput"
           value={composerValue}
