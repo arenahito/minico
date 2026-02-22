@@ -14,7 +14,7 @@ describe("settings store", () => {
     const snapshot: SettingsSnapshot = {
       config: {
         schemaVersion: 1,
-        codex: { path: null, homeIsolation: false },
+        codex: { path: null, homeIsolation: false, personality: "friendly" },
         workspace: { lastPath: null },
         diagnostics: { logLevel: "info" },
         window: {
@@ -33,7 +33,11 @@ describe("settings store", () => {
   it("saves settings with payload", async () => {
     const config: MinicoConfig = {
       schemaVersion: 1,
-      codex: { path: "C:/codex/codex.exe", homeIsolation: true },
+      codex: {
+        path: "C:/codex/codex.exe",
+        homeIsolation: true,
+        personality: "friendly",
+      },
       workspace: { lastPath: null },
       diagnostics: { logLevel: "debug" },
       window: {

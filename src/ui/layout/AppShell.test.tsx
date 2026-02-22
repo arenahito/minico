@@ -612,6 +612,7 @@ describe("AppShell", () => {
         text: "hello",
         model: "gpt-5-mini",
         effort: "high",
+        personality: "friendly",
       });
     });
   });

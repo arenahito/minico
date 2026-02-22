@@ -42,12 +42,14 @@ pub struct MinicoConfig {
     pub extra: HashMap<String, serde_json::Value>,
 }
 
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 #[serde(rename_all = "camelCase")]
 pub struct CodexConfig {
     pub path: Option<String>,
     pub home_isolation: bool,
+    #[serde(default = "default_codex_personality")]
+    pub personality: String,
     #[serde(flatten)]
     pub extra: HashMap<String, serde_json::Value>,
 }
@@ -132,6 +134,21 @@ impl Default for MinicoConfig {
             workspace: WorkspaceConfig::default(),
             diagnostics: DiagnosticsConfig::default(),
             window: WindowConfig::default(),
+            extra: HashMap::new(),
+        }
+    }
+}
+
+fn default_codex_personality() -> String {
+    "friendly".to_string()
+}
+
+impl Default for CodexConfig {
+    fn default() -> Self {
+        Self {
+            path: None,
+            home_isolation: false,
+            personality: default_codex_personality(),
             extra: HashMap::new(),
         }
     }
@@ -308,6 +325,7 @@ mod tests {
         assert_eq!(config.schema_version, 1);
         assert_eq!(config.codex.path, None);
         assert!(!config.codex.home_isolation);
+        assert_eq!(config.codex.personality, "friendly");
         assert_eq!(config.workspace.last_path, None);
         assert_eq!(config.diagnostics.log_level, LogLevel::Info);
         assert_eq!(config.window.placement.width, 980);
@@ -339,6 +357,7 @@ mod tests {
             parsed.codex.extra.get("futureKey"),
             Some(&serde_json::Value::Bool(true))
         );
+        assert_eq!(parsed.codex.personality, "friendly");
 
         let temp = TempDir::new().expect("temp dir");
         let config_path = temp.path().join("roundtrip.json");

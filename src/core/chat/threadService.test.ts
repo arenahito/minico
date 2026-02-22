@@ -122,7 +122,7 @@ describe("threadService", () => {
     });
     mockedInvoke.mockResolvedValueOnce(undefined);
 
-    await startTurn("t1", "hello", "gpt-5", "medium");
+    await startTurn("t1", "hello", "gpt-5", "medium", "friendly");
     await interruptTurn("t1", "turn-1");
 
     expect(mockedInvoke).toHaveBeenNthCalledWith(1, "turn_start", {
@@ -130,6 +130,7 @@ describe("threadService", () => {
       text: "hello",
       model: "gpt-5",
       effort: "medium",
+      personality: "friendly",
     });
     expect(mockedInvoke).toHaveBeenNthCalledWith(2, "turn_interrupt", {
       threadId: "t1",

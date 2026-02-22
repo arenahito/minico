@@ -1,4 +1,5 @@
 export type DiagnosticsLogLevel = "error" | "warn" | "info" | "debug";
+export type CodexPersonality = "none" | "friendly" | "pragmatic";
 
 export interface WindowPlacement {
   x: number;
@@ -14,6 +15,7 @@ export interface MinicoConfig {
   codex: {
     path: string | null;
     homeIsolation: boolean;
+    personality: CodexPersonality;
   };
   workspace: {
     lastPath: string | null;

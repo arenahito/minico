@@ -399,6 +399,7 @@ pub async fn turn_start(
     text: String,
     model: Option<String>,
     effort: Option<String>,
+    personality: Option<String>,
 ) -> Result<TurnStartResult, String> {
     let trimmed = text.trim().to_string();
     if trimmed.is_empty() {
@@ -413,6 +414,7 @@ pub async fn turn_start(
                 &trimmed,
                 model.as_deref(),
                 effort.as_deref(),
+                personality.as_deref(),
                 &cwd.cwd,
             )
             .map_err(|error| error.to_string())?;

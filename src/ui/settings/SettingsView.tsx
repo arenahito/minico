@@ -11,6 +11,7 @@ import {
   resolveActiveCwd,
 } from "../../core/workspace/workspaceStore";
 import type {
+  CodexPersonality,
   CodexPathValidationResult,
   DiagnosticsLogLevel,
   MinicoConfig,
@@ -19,6 +20,11 @@ import type {
 import { WorkspacePicker } from "./WorkspacePicker";
 
 const logLevels: DiagnosticsLogLevel[] = ["error", "warn", "info", "debug"];
+const codexPersonalities: CodexPersonality[] = [
+  "friendly",
+  "pragmatic",
+  "none",
+];
 
 function normalizeCodexPath(value: string): string | null {
   const trimmed = value.trim();
@@ -30,7 +36,11 @@ function normalizeWorkspacePath(value: string): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-export function SettingsView() {
+interface SettingsViewProps {
+  onSaved?: (config: MinicoConfig) => void;
+}
+
+export function SettingsView({ onSaved }: SettingsViewProps) {
   const [snapshot, setSnapshot] = useState<SettingsSnapshot | null>(null);
   const [config, setConfig] = useState<MinicoConfig | null>(null);
   const [codexPathInput, setCodexPathInput] = useState("");
@@ -117,6 +127,7 @@ export function SettingsView() {
       setWorkspacePathInput(
         updated.config.workspace.lastPath ?? defaultWorkspacePath ?? "",
       );
+      onSaved?.(updated.config);
     } catch (saveError) {
       setError(String(saveError));
     } finally {
@@ -182,6 +193,27 @@ export function SettingsView() {
           />
           <span>Enable CODEX_HOME isolation</span>
         </label>
+
+        <label htmlFor="personality">Codex personality</label>
+        <select
+          id="personality"
+          value={config.codex.personality}
+          onChange={(event) =>
+            setConfig({
+              ...config,
+              codex: {
+                ...config.codex,
+                personality: event.currentTarget.value as CodexPersonality,
+              },
+            })
+          }
+        >
+          {codexPersonalities.map((personality) => (
+            <option key={personality} value={personality}>
+              {personality}
+            </option>
+          ))}
+        </select>
 
         <label htmlFor="logLevel">Diagnostics log level</label>
         <select

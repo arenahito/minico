@@ -35,7 +35,7 @@ vi.mock("../../core/diagnostics/client", () => ({
 const snapshot: SettingsSnapshot = {
   config: {
     schemaVersion: 1,
-    codex: { path: null, homeIsolation: false },
+    codex: { path: null, homeIsolation: false, personality: "friendly" },
     workspace: { lastPath: null },
     diagnostics: { logLevel: "info" },
     window: {
@@ -90,6 +90,23 @@ describe("SettingsView", () => {
       expect(validateCodexPath).toHaveBeenCalledWith("C:/tools/codex.exe");
       expect(saveSettings).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it("saves selected codex personality", async () => {
+    render(<SettingsView />);
+    await screen.findByRole("heading", { level: 2, name: "Settings" });
+
+    fireEvent.change(screen.getByLabelText(/Codex personality/i), {
+      target: { value: "pragmatic" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+
+    await waitFor(() => {
+      expect(saveSettings).toHaveBeenCalledTimes(1);
+    });
+
+    const savedConfig = saveSettings.mock.calls[0]?.[0];
+    expect(savedConfig.codex.personality).toBe("pragmatic");
   });
 
   it("blocks save when codex path validation fails", async () => {

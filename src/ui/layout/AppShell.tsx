@@ -36,6 +36,8 @@ import {
   type SessionPolledEvent,
   type ThreadSummary,
 } from "../../core/chat/threadService";
+import { loadSettings } from "../../core/settings/store";
+import type { CodexPersonality, MinicoConfig } from "../../core/settings/types";
 import {
   eventToTurnAction,
   initialTurnStreamState,
@@ -161,6 +163,7 @@ const THREAD_PANEL_MAX_WIDTH = 560;
 const CHAT_PANE_MIN_WIDTH = 420;
 const DEFAULT_THREAD_PANEL_WIDTH = 320;
 const SETTINGS_MODAL_ANIMATION_MS = 300;
+const DEFAULT_CODEX_PERSONALITY: CodexPersonality = "friendly";
 const REASONING_EFFORTS = new Set<ReasoningEffort>([
   "none",
   "minimal",
@@ -189,6 +192,13 @@ function normalizeReasoningEffort(value: string | null | undefined): ReasoningEf
     return value as ReasoningEffort;
   }
   return null;
+}
+
+function normalizeCodexPersonality(value: string | null | undefined): CodexPersonality {
+  if (value === "friendly" || value === "pragmatic" || value === "none") {
+    return value;
+  }
+  return DEFAULT_CODEX_PERSONALITY;
 }
 
 function resolveModelCatalog(models: ModelSummary[]): ModelSummary[] {
@@ -272,6 +282,9 @@ export function AppShell() {
   const [modelCatalog, setModelCatalog] = useState<ModelSummary[]>(FALLBACK_MODELS);
   const [selectedModel, setSelectedModel] = useState(FALLBACK_MODELS[0].model);
   const [selectedEffort, setSelectedEffort] = useState<ReasoningEffort | null>(null);
+  const [selectedPersonality, setSelectedPersonality] = useState<CodexPersonality>(
+    DEFAULT_CODEX_PERSONALITY,
+  );
   const [selectorStage, setSelectorStage] = useState<SelectorStage>("model");
   const [threadPanelOpen, setThreadPanelOpen] = useState(true);
   const [threadPanelWidth, setThreadPanelWidth] = useState(DEFAULT_THREAD_PANEL_WIDTH);
@@ -644,6 +657,32 @@ export function AppShell() {
 
   useEffect(() => {
     if (auth.view !== "loggedIn") {
+      setSelectedPersonality(DEFAULT_CODEX_PERSONALITY);
+      return;
+    }
+
+    let cancelled = false;
+    void loadSettings()
+      .then((snapshot) => {
+        if (!cancelled) {
+          setSelectedPersonality(
+            normalizeCodexPersonality(snapshot?.config?.codex?.personality),
+          );
+        }
+      })
+      .catch((reason) => {
+        if (!cancelled) {
+          setError(mapErrorToUserFacing(reason));
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [auth.view]);
+
+  useEffect(() => {
+    if (auth.view !== "loggedIn") {
       persistedModelPreferenceRef.current = null;
       return;
     }
@@ -846,6 +885,7 @@ export function AppShell() {
         trimmed,
         selectedModel,
         selectedEffort,
+        selectedPersonality,
       );
       setWorkspacePath(turn.cwd);
       if (turn.turnId) {
@@ -1264,7 +1304,13 @@ export function AppShell() {
               <X size={17} aria-hidden="true" />
             </button>
             <div className="settings-modal-body">
-              <SettingsView />
+              <SettingsView
+                onSaved={(config: MinicoConfig) =>
+                  setSelectedPersonality(
+                    normalizeCodexPersonality(config.codex.personality),
+                  )
+                }
+              />
             </div>
           </section>
         </div>

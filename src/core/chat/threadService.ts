@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { CodexPersonality } from "../settings/types";
 
 export interface ThreadSummary {
   id: string;
@@ -116,8 +117,15 @@ export async function startTurn(
   text: string,
   model: string | null,
   effort: ReasoningEffort | null,
+  personality: CodexPersonality,
 ): Promise<TurnStartResult> {
-  return invoke<TurnStartResult>("turn_start", { threadId, text, model, effort });
+  return invoke<TurnStartResult>("turn_start", {
+    threadId,
+    text,
+    model,
+    effort,
+    personality,
+  });
 }
 
 export async function interruptTurn(
