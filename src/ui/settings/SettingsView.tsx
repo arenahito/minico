@@ -5,12 +5,17 @@ import {
   saveSettings,
   validateCodexPath,
 } from "../../core/settings/store";
+import {
+  loadDefaultWorkspacePath,
+  resolveActiveCwd,
+} from "../../core/workspace/workspaceStore";
 import type {
   CodexPathValidationResult,
   DiagnosticsLogLevel,
   MinicoConfig,
   SettingsSnapshot,
 } from "../../core/settings/types";
+import { WorkspacePicker } from "./WorkspacePicker";
 
 const logLevels: DiagnosticsLogLevel[] = ["error", "warn", "info", "debug"];
 
@@ -19,13 +24,23 @@ function normalizeCodexPath(value: string): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function normalizeWorkspacePath(value: string): string | null {
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 export function SettingsView() {
   const [snapshot, setSnapshot] = useState<SettingsSnapshot | null>(null);
   const [config, setConfig] = useState<MinicoConfig | null>(null);
   const [codexPathInput, setCodexPathInput] = useState("");
+  const [workspacePathInput, setWorkspacePathInput] = useState("");
+  const [defaultWorkspacePath, setDefaultWorkspacePath] = useState<string | null>(
+    null,
+  );
   const [validation, setValidation] = useState<CodexPathValidationResult | null>(
     null,
   );
+  const [workspaceWarning, setWorkspaceWarning] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -33,9 +48,24 @@ export function SettingsView() {
     async function bootstrap() {
       try {
         const loaded = await loadSettings();
+        const defaultWorkspace = await loadDefaultWorkspacePath();
+        const resolvedWorkspace = await resolveActiveCwd();
+        const effectiveWorkspacePath = resolvedWorkspace.fallbackUsed
+          ? resolvedWorkspace.cwd
+          : (loaded.config.workspace.lastPath ?? defaultWorkspace);
+        const normalizedConfig: MinicoConfig = {
+          ...loaded.config,
+          workspace: {
+            ...loaded.config.workspace,
+            lastPath: effectiveWorkspacePath,
+          },
+        };
         setSnapshot(loaded);
-        setConfig(loaded.config);
+        setConfig(normalizedConfig);
         setCodexPathInput(loaded.config.codex.path ?? "");
+        setWorkspacePathInput(effectiveWorkspacePath);
+        setDefaultWorkspacePath(defaultWorkspace);
+        setWorkspaceWarning(resolvedWorkspace.warning);
       } catch (loadError) {
         setError(String(loadError));
       }
@@ -71,11 +101,18 @@ export function SettingsView() {
           ...config.codex,
           path: normalizeCodexPath(codexPathInput),
         },
+        workspace: {
+          ...config.workspace,
+          lastPath: normalizeWorkspacePath(workspacePathInput),
+        },
       };
       const updated = await saveSettings(nextConfig);
       setSnapshot(updated);
       setConfig(updated.config);
       setCodexPathInput(updated.config.codex.path ?? "");
+      setWorkspacePathInput(
+        updated.config.workspace.lastPath ?? defaultWorkspacePath ?? "",
+      );
     } catch (saveError) {
       setError(String(saveError));
     } finally {
@@ -103,6 +140,15 @@ export function SettingsView() {
           value={codexPathInput}
           onChange={(event) => setCodexPathInput(event.currentTarget.value)}
           placeholder="Use PATH when empty"
+        />
+
+        <WorkspacePicker
+          value={workspacePathInput}
+          defaultPath={defaultWorkspacePath}
+          onChange={setWorkspacePathInput}
+          onUseDefault={() =>
+            setWorkspacePathInput(defaultWorkspacePath ?? workspacePathInput)
+          }
         />
 
         <label className="checkbox-row" htmlFor="homeIsolation">
@@ -167,6 +213,7 @@ export function SettingsView() {
       {validation && !validation.valid && validation.message ? (
         <p className="form-error">{validation.message}</p>
       ) : null}
+      {workspaceWarning ? <p className="form-warning">{workspaceWarning}</p> : null}
       {error ? <p className="form-error">{error}</p> : null}
     </section>
   );

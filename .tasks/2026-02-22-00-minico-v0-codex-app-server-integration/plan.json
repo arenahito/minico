@@ -19,7 +19,7 @@
     {
       "id": "98fe7db4-0b9f-4d08-b361-6e0c4d15cc76",
       "title": "X4: Implement Workspace Selection and CWD Resolution",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "07dc6221-022c-4efa-baf2-981aaf8f0818",
         "80bfdcdd-f4c0-4be3-9e5e-b33ba07f3324"

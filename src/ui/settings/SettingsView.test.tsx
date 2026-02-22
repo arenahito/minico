@@ -12,11 +12,19 @@ import type { SettingsSnapshot } from "../../core/settings/types";
 const loadSettings = vi.fn();
 const saveSettings = vi.fn();
 const validateCodexPath = vi.fn();
+const loadDefaultWorkspacePath = vi.fn();
+const resolveActiveCwd = vi.fn();
 
 vi.mock("../../core/settings/store", () => ({
   loadSettings: (...args: unknown[]) => loadSettings(...args),
   saveSettings: (...args: unknown[]) => saveSettings(...args),
   validateCodexPath: (...args: unknown[]) => validateCodexPath(...args),
+}));
+
+vi.mock("../../core/workspace/workspaceStore", () => ({
+  loadDefaultWorkspacePath: (...args: unknown[]) =>
+    loadDefaultWorkspacePath(...args),
+  resolveActiveCwd: (...args: unknown[]) => resolveActiveCwd(...args),
 }));
 
 const snapshot: SettingsSnapshot = {
@@ -43,6 +51,12 @@ describe("SettingsView", () => {
     saveSettings.mockReset();
     validateCodexPath.mockReset();
     loadSettings.mockResolvedValue(snapshot);
+    loadDefaultWorkspacePath.mockResolvedValue("C:/Users/test/.minico/workspace");
+    resolveActiveCwd.mockResolvedValue({
+      cwd: "C:/Users/test/.minico/workspace",
+      fallbackUsed: false,
+      warning: null,
+    });
     validateCodexPath.mockResolvedValue({ valid: true, message: null });
     saveSettings.mockResolvedValue(snapshot);
   });
@@ -89,5 +103,47 @@ describe("SettingsView", () => {
         screen.getByText("Configured codex path does not exist"),
       ).toBeVisible();
     });
+  });
+
+  it("shows fallback warning from workspace resolver", async () => {
+    resolveActiveCwd.mockResolvedValueOnce({
+      cwd: "C:/Users/test/.minico/workspace",
+      fallbackUsed: true,
+      warning: "Stored workspace path was unavailable. Fallback to default workspace.",
+    });
+    render(<SettingsView />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Stored workspace path was unavailable. Fallback to default workspace.",
+        ),
+      ).toBeVisible();
+    });
+  });
+
+  it("uses resolved workspace path after fallback when saving", async () => {
+    loadSettings.mockResolvedValueOnce({
+      ...snapshot,
+      config: {
+        ...snapshot.config,
+        workspace: { lastPath: "C:/missing/workspace" },
+      },
+    });
+    resolveActiveCwd.mockResolvedValueOnce({
+      cwd: "C:/Users/test/.minico/workspace",
+      fallbackUsed: true,
+      warning: "Stored workspace path was unavailable. Fallback to default workspace.",
+    });
+    render(<SettingsView />);
+    await screen.findByRole("heading", { level: 2, name: "Settings" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+    await waitFor(() => {
+      expect(saveSettings).toHaveBeenCalledTimes(1);
+    });
+
+    const savedConfig = saveSettings.mock.calls[0]?.[0];
+    expect(savedConfig.workspace.lastPath).toBe("C:/Users/test/.minico/workspace");
   });
 });

@@ -159,11 +159,18 @@ pub fn load_or_default(config_path: &Path) -> Result<MinicoConfig, ConfigError> 
 }
 
 pub fn save(config_path: &Path, config: &MinicoConfig) -> Result<(), ConfigError> {
+    validate_codex_path(config.codex.path.as_deref())?;
+    write_config(config_path, config)
+}
+
+pub fn save_system_update(config_path: &Path, config: &MinicoConfig) -> Result<(), ConfigError> {
+    write_config(config_path, config)
+}
+
+fn write_config(config_path: &Path, config: &MinicoConfig) -> Result<(), ConfigError> {
     if let Some(parent) = config_path.parent() {
         fs::create_dir_all(parent).map_err(ConfigError::WriteConfig)?;
     }
-
-    validate_codex_path(config.codex.path.as_deref())?;
 
     if config.codex.home_isolation {
         fs::create_dir_all(paths::isolated_codex_home_path()?).map_err(ConfigError::WriteConfig)?;
@@ -273,8 +280,8 @@ mod tests {
     use tempfile::TempDir;
 
     use super::{
-        effective_codex_home, load_or_default, save, validate_codex_path, ConfigError, LogLevel,
-        MinicoConfig,
+        effective_codex_home, load_or_default, save, save_system_update, validate_codex_path,
+        ConfigError, LogLevel, MinicoConfig,
     };
 
     #[test]
@@ -333,6 +340,18 @@ mod tests {
 
         let error = save(&config_path, &config).expect_err("missing codex path must fail");
         assert!(matches!(error, ConfigError::CodexPathNotFound(_)));
+    }
+
+    #[test]
+    fn system_update_save_skips_codex_path_validation() {
+        let temp = TempDir::new().expect("temp dir");
+        let config_path = temp.path().join("config.json");
+        let mut config = MinicoConfig::default();
+        config.codex.path = Some(temp.path().join("missing.exe").display().to_string());
+
+        save_system_update(&config_path, &config).expect("internal save should succeed");
+        let written = fs::read_to_string(config_path).expect("saved config");
+        assert!(written.contains("missing.exe"));
     }
 
     #[test]

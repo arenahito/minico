@@ -75,3 +75,35 @@ cmd /c rmdir /s /q "_bootstrap"
 **Resolution**: Added `SettingsView` test case that mocks invalid validation result and asserts `saveSettings` is not called while the validation error message is displayed.
 
 **Scope**: `task-specific`
+
+## X4: Implement Workspace Selection and CWD Resolution
+
+### Reliability: Keep workspace resolution independent from codex path validity
+
+**Context**: Workspace resolver persists fallback path when stored workspace becomes unavailable.
+
+**Problem**: Reusing the normal settings save path made fallback persistence fail when `codex.path` was invalid, even though `cwd` resolution itself could succeed.
+
+**Resolution**: Added `save_system_update` in config layer for internal state persistence without `codex.path` validation and used it from workspace fallback handling.
+
+**Scope**: `codebase`
+
+### UX: Distinguish first-run fallback from broken stored workspace
+
+**Context**: Resolver always returned `fallbackUsed=true` when no selected workspace existed.
+
+**Problem**: Showing a fixed "stored path unavailable" warning on first launch was misleading because no stored path existed.
+
+**Resolution**: Resolver now emits warning only when a non-empty stored workspace path existed and failed validation. First-run fallback keeps `warning = None`.
+
+**Scope**: `codebase`
+
+### State Management: Prevent stale workspace path from being re-saved
+
+**Context**: Settings view loaded persisted config and workspace resolver output separately.
+
+**Problem**: After fallback, UI could keep an old unavailable path in local state and write it back on the next save, causing repeated fallback cycles.
+
+**Resolution**: Settings bootstrap now computes an `effectiveWorkspacePath` from resolver output and writes it into local config/input state before save actions.
+
+**Scope**: `task-specific`
