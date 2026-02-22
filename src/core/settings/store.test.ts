@@ -17,6 +17,7 @@ describe("settings store", () => {
         codex: { path: null, homeIsolation: false, personality: "friendly" },
         workspace: { lastPath: null },
         diagnostics: { logLevel: "info" },
+        appearance: { theme: "light" },
         window: {
           placement: { x: 0, y: 0, width: 980, height: 720, maximized: false },
         },
@@ -40,6 +41,7 @@ describe("settings store", () => {
       },
       workspace: { lastPath: null },
       diagnostics: { logLevel: "debug" },
+      appearance: { theme: "light" },
       window: {
         placement: { x: 0, y: 0, width: 980, height: 720, maximized: false },
       },

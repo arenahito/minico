@@ -11,6 +11,7 @@ import {
   resolveActiveCwd,
 } from "../../core/workspace/workspaceStore";
 import type {
+  AppTheme,
   CodexPersonality,
   CodexPathValidationResult,
   DiagnosticsLogLevel,
@@ -25,6 +26,7 @@ const codexPersonalities: CodexPersonality[] = [
   "pragmatic",
   "none",
 ];
+const appThemes: AppTheme[] = ["light", "dark"];
 
 function normalizeCodexPath(value: string): string | null {
   const trimmed = value.trim();
@@ -231,6 +233,27 @@ export function SettingsView({ onSaved }: SettingsViewProps) {
           {logLevels.map((level) => (
             <option key={level} value={level}>
               {level}
+            </option>
+          ))}
+        </select>
+
+        <label htmlFor="theme">Theme</label>
+        <select
+          id="theme"
+          value={config.appearance.theme}
+          onChange={(event) =>
+            setConfig({
+              ...config,
+              appearance: {
+                ...config.appearance,
+                theme: event.currentTarget.value as AppTheme,
+              },
+            })
+          }
+        >
+          {appThemes.map((theme) => (
+            <option key={theme} value={theme}>
+              {theme}
             </option>
           ))}
         </select>

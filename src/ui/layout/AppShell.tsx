@@ -37,7 +37,7 @@ import {
   type ThreadSummary,
 } from "../../core/chat/threadService";
 import { loadSettings } from "../../core/settings/store";
-import type { CodexPersonality, MinicoConfig } from "../../core/settings/types";
+import type { AppTheme, CodexPersonality, MinicoConfig } from "../../core/settings/types";
 import {
   eventToTurnAction,
   initialTurnStreamState,
@@ -164,6 +164,7 @@ const CHAT_PANE_MIN_WIDTH = 420;
 const DEFAULT_THREAD_PANEL_WIDTH = 320;
 const SETTINGS_MODAL_ANIMATION_MS = 300;
 const DEFAULT_CODEX_PERSONALITY: CodexPersonality = "friendly";
+const DEFAULT_APP_THEME: AppTheme = "light";
 const REASONING_EFFORTS = new Set<ReasoningEffort>([
   "none",
   "minimal",
@@ -199,6 +200,13 @@ function normalizeCodexPersonality(value: string | null | undefined): CodexPerso
     return value;
   }
   return DEFAULT_CODEX_PERSONALITY;
+}
+
+function normalizeTheme(value: string | null | undefined): AppTheme {
+  if (value === "light" || value === "dark") {
+    return value;
+  }
+  return DEFAULT_APP_THEME;
 }
 
 function resolveModelCatalog(models: ModelSummary[]): ModelSummary[] {
@@ -285,6 +293,7 @@ export function AppShell() {
   const [selectedPersonality, setSelectedPersonality] = useState<CodexPersonality>(
     DEFAULT_CODEX_PERSONALITY,
   );
+  const [theme, setTheme] = useState<AppTheme>(DEFAULT_APP_THEME);
   const [selectorStage, setSelectorStage] = useState<SelectorStage>("model");
   const [threadPanelOpen, setThreadPanelOpen] = useState(true);
   const [threadPanelWidth, setThreadPanelWidth] = useState(DEFAULT_THREAD_PANEL_WIDTH);
@@ -342,6 +351,10 @@ export function AppShell() {
   useEffect(() => {
     selectedModelRef.current = selectedModel;
   }, [selectedModel]);
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+  }, [theme]);
 
   useEffect(() => {
     threadPanelWidthRef.current = threadPanelWidth;
@@ -654,6 +667,25 @@ export function AppShell() {
       cancelled = true;
     };
   }, [auth.view]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadSettings()
+      .then((snapshot) => {
+        if (!cancelled) {
+          setTheme(normalizeTheme(snapshot?.config?.appearance?.theme));
+        }
+      })
+      .catch((reason) => {
+        if (!cancelled) {
+          setError(mapErrorToUserFacing(reason));
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (auth.view !== "loggedIn") {
@@ -1305,11 +1337,12 @@ export function AppShell() {
             </button>
             <div className="settings-modal-body">
               <SettingsView
-                onSaved={(config: MinicoConfig) =>
+                onSaved={(config: MinicoConfig) => {
                   setSelectedPersonality(
                     normalizeCodexPersonality(config.codex.personality),
-                  )
-                }
+                  );
+                  setTheme(normalizeTheme(config.appearance.theme));
+                }}
               />
             </div>
           </section>

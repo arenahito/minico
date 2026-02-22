@@ -37,6 +37,7 @@ pub struct MinicoConfig {
     pub codex: CodexConfig,
     pub workspace: WorkspaceConfig,
     pub diagnostics: DiagnosticsConfig,
+    pub appearance: AppearanceConfig,
     pub window: WindowConfig,
     #[serde(flatten)]
     pub extra: HashMap<String, serde_json::Value>,
@@ -68,6 +69,16 @@ pub struct WorkspaceConfig {
 #[serde(rename_all = "camelCase")]
 pub struct DiagnosticsConfig {
     pub log_level: LogLevel,
+    #[serde(flatten)]
+    pub extra: HashMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+#[serde(rename_all = "camelCase")]
+pub struct AppearanceConfig {
+    #[serde(default = "default_theme")]
+    pub theme: String,
     #[serde(flatten)]
     pub extra: HashMap<String, serde_json::Value>,
 }
@@ -133,6 +144,7 @@ impl Default for MinicoConfig {
             codex: CodexConfig::default(),
             workspace: WorkspaceConfig::default(),
             diagnostics: DiagnosticsConfig::default(),
+            appearance: AppearanceConfig::default(),
             window: WindowConfig::default(),
             extra: HashMap::new(),
         }
@@ -141,6 +153,10 @@ impl Default for MinicoConfig {
 
 fn default_codex_personality() -> String {
     "friendly".to_string()
+}
+
+fn default_theme() -> String {
+    "light".to_string()
 }
 
 impl Default for CodexConfig {
@@ -158,6 +174,15 @@ impl Default for DiagnosticsConfig {
     fn default() -> Self {
         Self {
             log_level: LogLevel::Info,
+            extra: HashMap::new(),
+        }
+    }
+}
+
+impl Default for AppearanceConfig {
+    fn default() -> Self {
+        Self {
+            theme: default_theme(),
             extra: HashMap::new(),
         }
     }
@@ -328,6 +353,7 @@ mod tests {
         assert_eq!(config.codex.personality, "friendly");
         assert_eq!(config.workspace.last_path, None);
         assert_eq!(config.diagnostics.log_level, LogLevel::Info);
+        assert_eq!(config.appearance.theme, "light");
         assert_eq!(config.window.placement.width, 980);
         assert_eq!(config.window.thread_panel_width, None);
         assert_eq!(config.window.thread_panel_open, None);
@@ -358,6 +384,7 @@ mod tests {
             Some(&serde_json::Value::Bool(true))
         );
         assert_eq!(parsed.codex.personality, "friendly");
+        assert_eq!(parsed.appearance.theme, "light");
 
         let temp = TempDir::new().expect("temp dir");
         let config_path = temp.path().join("roundtrip.json");

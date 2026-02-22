@@ -1,5 +1,6 @@
 export type DiagnosticsLogLevel = "error" | "warn" | "info" | "debug";
 export type CodexPersonality = "none" | "friendly" | "pragmatic";
+export type AppTheme = "light" | "dark";
 
 export interface WindowPlacement {
   x: number;
@@ -22,6 +23,9 @@ export interface MinicoConfig {
   };
   diagnostics: {
     logLevel: DiagnosticsLogLevel;
+  };
+  appearance: {
+    theme: AppTheme;
   };
   window: {
     placement: WindowPlacement;

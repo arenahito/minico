@@ -38,6 +38,7 @@ const snapshot: SettingsSnapshot = {
     codex: { path: null, homeIsolation: false, personality: "friendly" },
     workspace: { lastPath: null },
     diagnostics: { logLevel: "info" },
+    appearance: { theme: "light" },
     window: {
       placement: { x: 0, y: 0, width: 980, height: 720, maximized: false },
     },
@@ -107,6 +108,23 @@ describe("SettingsView", () => {
 
     const savedConfig = saveSettings.mock.calls[0]?.[0];
     expect(savedConfig.codex.personality).toBe("pragmatic");
+  });
+
+  it("saves selected theme", async () => {
+    render(<SettingsView />);
+    await screen.findByRole("heading", { level: 2, name: "Settings" });
+
+    fireEvent.change(screen.getByLabelText(/^Theme$/i), {
+      target: { value: "dark" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+
+    await waitFor(() => {
+      expect(saveSettings).toHaveBeenCalledTimes(1);
+    });
+
+    const savedConfig = saveSettings.mock.calls[0]?.[0];
+    expect(savedConfig.appearance.theme).toBe("dark");
   });
 
   it("blocks save when codex path validation fails", async () => {

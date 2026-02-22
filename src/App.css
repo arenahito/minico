@@ -7,13 +7,18 @@
   font-weight: 400;
   color: var(--fg-default);
   background:
-    radial-gradient(circle at 15% 0%, #fff4de 0%, transparent 40%),
-    radial-gradient(circle at 95% 12%, #dceef8 0%, transparent 35%),
+    radial-gradient(circle at 15% 0%, var(--bg-root-spot-1) 0%, transparent 40%),
+    radial-gradient(circle at 95% 12%, var(--bg-root-spot-2) 0%, transparent 35%),
     var(--bg-canvas);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
 }
 
 *,
@@ -140,10 +145,10 @@ pre {
 
 .error-banner {
   margin: var(--space-4) var(--space-6) 0;
-  border: 1px solid color-mix(in srgb, var(--error) 45%, white);
+  border: 1px solid color-mix(in srgb, var(--error) 45%, var(--surface-base));
   border-radius: var(--radius-md);
-  background: #ffe9e9;
-  color: #511717;
+  background: var(--error-banner-bg);
+  color: var(--error-banner-fg);
   display: flex;
   justify-content: space-between;
   gap: var(--space-4);
@@ -162,9 +167,9 @@ pre {
 }
 
 .error-banner button {
-  border: 1px solid #873737;
-  background: #fff;
-  color: #7e2f2f;
+  border: 1px solid var(--error-banner-border);
+  background: var(--surface-base);
+  color: var(--error-banner-button-fg);
   border-radius: var(--radius-sm);
   padding: var(--space-2) var(--space-3);
   cursor: pointer;
@@ -208,7 +213,7 @@ pre {
   height: 40px;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-sm);
-  background: #fff;
+  background: var(--surface-base);
   color: var(--fg-default);
   display: inline-flex;
   align-items: center;
@@ -218,7 +223,7 @@ pre {
 
 .toolbar-button.is-active {
   border-color: var(--focus-ring);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--focus-ring) 35%, white);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--focus-ring) 35%, var(--surface-base));
 }
 
 .toolbar-button-settings {
@@ -327,7 +332,7 @@ pre {
 .thread-panel button {
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
-  background: #fff;
+  background: var(--surface-base);
   color: var(--fg-default);
   padding: var(--space-2) var(--space-3);
   cursor: pointer;
@@ -355,7 +360,7 @@ pre {
 
 .thread-list-item.is-active {
   border-color: var(--focus-ring);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--focus-ring) 35%, white);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--focus-ring) 35%, var(--surface-base));
 }
 
 .thread-title {
@@ -427,7 +432,7 @@ pre {
 .chat-item {
   border: 1px solid var(--border-default);
   border-radius: 16px;
-  background: #fff;
+  background: var(--surface-base);
   padding: var(--space-3);
   position: relative;
   width: fit-content;
@@ -446,7 +451,7 @@ pre {
 
 .chat-item-user {
   align-self: flex-end;
-  background: color-mix(in srgb, var(--bg-accent) 84%, white);
+  background: color-mix(in srgb, var(--bg-accent) 84%, var(--surface-base));
   color: var(--fg-inverse);
   border-color: color-mix(in srgb, var(--bg-accent) 60%, black);
 }
@@ -464,12 +469,12 @@ pre {
   height: 0;
   border-top: 8px solid transparent;
   border-bottom: 8px solid transparent;
-  border-left: 10px solid color-mix(in srgb, var(--bg-accent) 84%, white);
+  border-left: 10px solid color-mix(in srgb, var(--bg-accent) 84%, var(--surface-base));
 }
 
 .chat-item-agent {
   align-self: flex-start;
-  background: #fff;
+  background: var(--surface-base);
   margin-left: 10px;
 }
 
@@ -496,7 +501,7 @@ pre {
   height: 0;
   border-top: 8px solid transparent;
   border-bottom: 8px solid transparent;
-  border-right: 9px solid #fff;
+  border-right: 9px solid var(--surface-base);
 }
 
 .chat-item-body {
@@ -522,7 +527,7 @@ pre {
   border: 1px solid color-mix(in srgb, var(--bg-accent) 60%, var(--border-default));
   border-radius: var(--radius-sm);
   overflow: hidden;
-  background: color-mix(in srgb, var(--bg-accent) 70%, white);
+  background: color-mix(in srgb, var(--bg-accent) 70%, var(--surface-base));
 }
 
 .chat-item-image-attachment img {
@@ -545,7 +550,7 @@ pre {
   gap: 6px;
   border: 1px solid color-mix(in srgb, var(--bg-accent) 70%, var(--border-default));
   border-radius: 10px;
-  background: color-mix(in srgb, var(--bg-accent) 76%, white);
+  background: color-mix(in srgb, var(--bg-accent) 76%, var(--surface-base));
   color: inherit;
   padding: 6px 10px;
 }
@@ -597,7 +602,7 @@ pre {
 
 .chat-item-markdown code {
   font-size: 0.92em;
-  background: color-mix(in srgb, var(--bg-panel-2) 85%, white);
+  background: color-mix(in srgb, var(--bg-panel-2) 85%, var(--surface-base));
   border-radius: 6px;
   padding: 0.1em 0.35em;
 }
@@ -607,7 +612,7 @@ pre {
   border: 1px solid var(--border-default);
   border-radius: 10px;
   padding: var(--space-2);
-  background: color-mix(in srgb, var(--bg-panel-2) 92%, white);
+  background: color-mix(in srgb, var(--bg-panel-2) 92%, var(--surface-base));
 }
 
 .chat-item-markdown pre code {
@@ -636,7 +641,7 @@ pre {
   width: 7px;
   height: 7px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--fg-muted) 80%, white);
+  background: color-mix(in srgb, var(--fg-muted) 80%, var(--surface-base));
   animation: typing-dot-pulse 1.1s infinite ease-in-out;
 }
 
@@ -706,7 +711,7 @@ pre {
   border: 1px solid var(--border-default);
   border-radius: var(--radius-sm);
   overflow: hidden;
-  background: color-mix(in srgb, var(--bg-panel-2) 90%, white);
+  background: color-mix(in srgb, var(--bg-panel-2) 90%, var(--surface-base));
 }
 
 .composer-image-attachment img {
@@ -730,7 +735,7 @@ pre {
   gap: 6px;
   border: 1px solid color-mix(in srgb, var(--bg-accent) 42%, var(--border-default));
   border-radius: 10px;
-  background: color-mix(in srgb, var(--bg-accent) 14%, white);
+  background: color-mix(in srgb, var(--bg-accent) 14%, var(--surface-base));
   color: var(--fg-default);
   padding: 6px 34px 6px 10px;
 }
@@ -752,7 +757,7 @@ pre {
   height: 22px;
   border: 1px solid var(--border-default);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--surface-overlay);
   color: var(--fg-default);
   display: inline-flex;
   align-items: center;
@@ -788,7 +793,8 @@ pre {
   border-radius: var(--radius-sm);
   padding: var(--space-3);
   resize: vertical;
-  background: #fff;
+  background: var(--surface-base);
+  color: var(--fg-default);
 }
 
 .composer-toolbar {
@@ -817,7 +823,7 @@ pre {
   height: 40px;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-sm);
-  background: #fff;
+  background: var(--surface-base);
   color: var(--fg-default);
   padding: 0 var(--space-2) 0 var(--space-3);
   min-width: 220px;
@@ -849,7 +855,7 @@ pre {
   list-style: none;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-sm);
-  background: #fff;
+  background: var(--surface-base);
   box-shadow: 0 10px 30px rgba(18, 26, 33, 0.12);
 }
 
@@ -865,12 +871,12 @@ pre {
 }
 
 .model-select-option:hover {
-  background: color-mix(in srgb, var(--bg-accent) 12%, white);
+  background: color-mix(in srgb, var(--bg-accent) 12%, var(--surface-base));
 }
 
 .model-select-option[aria-selected="true"] {
-  background: color-mix(in srgb, var(--bg-accent) 16%, white);
-  border-color: color-mix(in srgb, var(--bg-accent) 35%, white);
+  background: color-mix(in srgb, var(--bg-accent) 16%, var(--surface-base));
+  border-color: color-mix(in srgb, var(--bg-accent) 35%, var(--surface-base));
 }
 
 .composer-actions {
@@ -884,7 +890,7 @@ pre {
   height: 40px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
-  background: #fff;
+  background: var(--surface-base);
   color: var(--fg-default);
   padding: 0;
   display: inline-flex;
@@ -900,7 +906,7 @@ pre {
 }
 
 .icon-button-muted {
-  background: #fff;
+  background: var(--surface-base);
   color: var(--fg-default);
 }
 
@@ -952,7 +958,7 @@ pre {
   justify-self: start;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
-  background: #fff;
+  background: var(--surface-base);
   padding: var(--space-2) var(--space-3);
   cursor: pointer;
 }
@@ -989,7 +995,7 @@ pre {
 .settings-modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(14, 21, 29, 0.44);
+  background: var(--overlay-scrim);
   display: grid;
   place-items: center;
   padding: var(--space-5);
@@ -1006,7 +1012,7 @@ pre {
   max-height: 92vh;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-lg);
-  background: #fff;
+  background: var(--surface-base);
   display: grid;
   grid-template-rows: minmax(0, 1fr);
   gap: 0;
@@ -1028,7 +1034,7 @@ pre {
   height: 36px;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-sm);
-  background: #fff;
+  background: var(--surface-base);
   color: var(--fg-default);
   display: inline-flex;
   align-items: center;
@@ -1065,7 +1071,7 @@ pre {
 .approval-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(14, 21, 29, 0.52);
+  background: var(--overlay-scrim-strong);
   display: grid;
   place-items: center;
   padding: var(--space-4);
@@ -1078,7 +1084,7 @@ pre {
   overflow: auto;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
-  background: #fff;
+  background: var(--surface-base);
   padding: var(--space-4);
   display: grid;
   gap: var(--space-3);
@@ -1098,7 +1104,7 @@ pre {
 
 .file-change-preview pre {
   margin: 0;
-  background: #f8f2e9;
+  background: var(--surface-soft);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-sm);
   padding: var(--space-3);
@@ -1121,12 +1127,12 @@ pre {
 
 .approval-actions button:first-child {
   background: var(--success);
-  color: #fff;
+  color: var(--fg-inverse);
 }
 
 .approval-actions button:nth-child(3) {
-  background: #fff2f2;
-  color: #8f1f1f;
+  background: var(--danger-soft);
+  color: var(--danger-contrast);
 }
 
 .toolbar-button,
@@ -1157,8 +1163,8 @@ pre {
 .error-banner button:hover:not(:disabled),
 .approval-actions button:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--focus-ring) 26%, var(--border-strong));
-  background: color-mix(in srgb, var(--bg-panel-2) 90%, white);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--focus-ring) 18%, white);
+  background: color-mix(in srgb, var(--bg-panel-2) 90%, var(--surface-base));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--focus-ring) 18%, var(--surface-base));
 }
 
 .icon-button-primary:hover:not(:disabled),
@@ -1167,7 +1173,7 @@ pre {
   background: color-mix(in srgb, var(--bg-accent) 84%, black);
   color: var(--fg-inverse);
   border-color: color-mix(in srgb, var(--bg-accent) 68%, black);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--bg-accent) 38%, white);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--bg-accent) 38%, var(--surface-base));
 }
 
 .approval-actions button:first-child:hover:not(:disabled) {
@@ -1176,9 +1182,9 @@ pre {
 }
 
 .approval-actions button:nth-child(3):hover:not(:disabled) {
-  background: color-mix(in srgb, #fff2f2 82%, #f4c9c9);
-  border-color: color-mix(in srgb, #8f1f1f 35%, var(--border-strong));
-  color: #7f1717;
+  background: color-mix(in srgb, var(--danger-soft) 82%, var(--bg-panel-2));
+  border-color: color-mix(in srgb, var(--danger-contrast) 35%, var(--border-strong));
+  color: var(--danger-contrast);
 }
 
 button:disabled {
