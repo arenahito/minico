@@ -84,7 +84,7 @@
     {
       "id": "6e4eb872-72c6-4f8b-86ef-573f2917a3cc",
       "title": "X3: Implement Safe Window Placement Persistence",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "07dc6221-022c-4efa-baf2-981aaf8f0818",
         "80bfdcdd-f4c0-4be3-9e5e-b33ba07f3324"

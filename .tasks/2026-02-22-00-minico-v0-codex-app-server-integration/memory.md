@@ -171,3 +171,25 @@ cmd /c rmdir /s /q "_bootstrap"
 **Resolution**: Introduced `RpcRuntime` trait and `MockRuntime` tests to validate handshake gating, retry, and restart policy without external process dependencies.
 
 **Scope**: `codebase`
+
+## X3: Implement Safe Window Placement Persistence
+
+### DPI Safety: Keep persisted and restored window coordinates in the same unit
+
+**Context**: Window placement is persisted from Tauri `outerPosition()`/`outerSize()`, which are physical-pixel values.
+
+**Problem**: Restoring with `LogicalPosition`/`LogicalSize` mixes unit systems and can misplace windows after DPI/scaling changes.
+
+**Resolution**: Switched restoration apply step to `PhysicalPosition`/`PhysicalSize` so persisted values and restored values use a consistent physical unit model.
+
+**Scope**: `codebase`
+
+### Multi-Monitor UX: Use monitor work area instead of full monitor bounds
+
+**Context**: The restoration clamp logic receives monitor rectangles from frontend and runs in Rust.
+
+**Problem**: Using full monitor `position/size` ignores reserved OS UI areas (taskbar/dock/menu bar), allowing restored windows to overlap non-usable screen space.
+
+**Resolution**: Updated monitor mapping to prefer `monitor.workArea.position/size` (with fallback to full bounds) before invoking `window_restore_placement`, and extended the lifecycle test to assert this mapping.
+
+**Scope**: `task-specific`
