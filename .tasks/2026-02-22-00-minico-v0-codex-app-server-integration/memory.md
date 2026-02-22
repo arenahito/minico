@@ -139,3 +139,35 @@ cmd /c rmdir /s /q "_bootstrap"
 **Resolution**: Added `AppServerProcessError::Terminate` and mapped termination failures explicitly.
 
 **Scope**: `codebase`
+
+## B2: Implement CodexFacade Handshake, Retry, and Recovery
+
+### Lifecycle: Recovery failures must not deadlock future retries
+
+**Context**: `CodexFacade` transitions to `Recovering` when runtime process health check fails.
+
+**Problem**: If restart or re-handshake fails once, leaving state at `Recovering` causes all following requests to fail fast as not initialized, even when next retry could succeed.
+
+**Resolution**: `ensure_ready` now stores previous lifecycle state and rolls back on recovery failure paths, so subsequent calls can attempt recovery again.
+
+**Scope**: `codebase`
+
+### Reliability: Explicitly test overload exhaustion behavior
+
+**Context**: Retry behavior on `-32001` overload is safety-critical because it controls user-facing failure semantics under server pressure.
+
+**Problem**: Success-after-retry tests alone do not prove bounded failure behavior when overload persists.
+
+**Resolution**: Added `returns_overloaded_when_retry_budget_is_exhausted` test, validating facade returns `CodexFacadeError::Overloaded` after max attempts.
+
+**Scope**: `codebase`
+
+### Architecture: Separate runtime transport and facade policy for isolated testing
+
+**Context**: Handshake and recovery logic are stateful and easier to break than low-level transport code.
+
+**Problem**: Testing policy logic directly against spawned child processes is slow and brittle.
+
+**Resolution**: Introduced `RpcRuntime` trait and `MockRuntime` tests to validate handshake gating, retry, and restart policy without external process dependencies.
+
+**Scope**: `codebase`

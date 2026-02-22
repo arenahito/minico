@@ -33,6 +33,8 @@ impl AppServerCommand {
 pub enum AppServerProcessError {
     #[error("Failed to spawn app-server process: {0}")]
     Spawn(std::io::Error),
+    #[error("Failed to read app-server process status: {0}")]
+    Status(std::io::Error),
     #[error("Failed to terminate app-server process: {0}")]
     Terminate(std::io::Error),
     #[error("App-server stdio stream was unavailable")]
@@ -140,6 +142,13 @@ impl AppServerProcess {
 
     pub fn terminate(&mut self) -> Result<(), AppServerProcessError> {
         self.child.kill().map_err(AppServerProcessError::Terminate)
+    }
+
+    pub fn is_running(&mut self) -> Result<bool, AppServerProcessError> {
+        self.child
+            .try_wait()
+            .map(|status| status.is_none())
+            .map_err(AppServerProcessError::Status)
     }
 
     fn spawn_stderr_collector(

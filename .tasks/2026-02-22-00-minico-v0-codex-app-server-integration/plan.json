@@ -37,7 +37,7 @@
     {
       "id": "21c3b1e3-9a60-4a12-9247-40a1e4bb75b0",
       "title": "B2: Implement CodexFacade Handshake, Retry, and Recovery",
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "1ec318b7-42ba-4683-82c7-2e204f815122"
       ]
