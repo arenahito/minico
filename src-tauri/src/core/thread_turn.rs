@@ -8,8 +8,8 @@ use tauri::State;
 use super::config::{load_snapshot, LogLevel};
 use super::events::RpcEvent;
 use super::paths;
-use super::session_runtime::{with_facade, SessionRuntimeState};
-use super::workspace::workspace_resolve_active_cwd;
+use super::session_runtime::{run_blocking_task, run_with_facade, SessionRuntimeState};
+use super::workspace::resolve_active_cwd;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -110,12 +110,12 @@ fn parse_thread_list(payload: &Value) -> ThreadListResult {
 }
 
 #[tauri::command]
-pub fn session_poll_events(
+pub async fn session_poll_events(
     state: State<'_, SessionRuntimeState>,
     timeout_ms: Option<u64>,
     max_events: Option<u32>,
 ) -> Result<Vec<SessionPolledEvent>, String> {
-    with_facade(&state, |facade| {
+    run_with_facade(&state, move |facade| {
         let first_wait = Duration::from_millis(timeout_ms.unwrap_or(0).min(5000));
         let max_count = max_events.unwrap_or(32).clamp(1, 128) as usize;
         let mut events = Vec::new();
@@ -146,22 +146,28 @@ pub fn session_poll_events(
 
         Ok(events)
     })
+    .await
 }
 
 #[tauri::command]
-pub fn thread_list(state: State<'_, SessionRuntimeState>) -> Result<ThreadListResult, String> {
-    with_facade(&state, |facade| {
+pub async fn thread_list(
+    state: State<'_, SessionRuntimeState>,
+) -> Result<ThreadListResult, String> {
+    run_with_facade(&state, |facade| {
         let payload = facade
             .thread_list_app_server_only()
             .map_err(|error| error.to_string())?;
         Ok(parse_thread_list(&payload))
     })
+    .await
 }
 
 #[tauri::command]
-pub fn thread_start(state: State<'_, SessionRuntimeState>) -> Result<ThreadSessionResult, String> {
-    let cwd = workspace_resolve_active_cwd()?;
-    with_facade(&state, |facade| {
+pub async fn thread_start(
+    state: State<'_, SessionRuntimeState>,
+) -> Result<ThreadSessionResult, String> {
+    run_with_facade(&state, |facade| {
+        let cwd = resolve_active_cwd()?;
         let payload = facade
             .thread_start(&cwd.cwd)
             .map_err(|error| error.to_string())?;
@@ -174,19 +180,20 @@ pub fn thread_start(state: State<'_, SessionRuntimeState>) -> Result<ThreadSessi
             workspace_warning: cwd.warning.clone(),
         })
     })
+    .await
 }
 
 #[tauri::command]
-pub fn thread_resume(
+pub async fn thread_resume(
     state: State<'_, SessionRuntimeState>,
     thread_id: String,
 ) -> Result<ThreadSessionResult, String> {
-    let cwd = workspace_resolve_active_cwd()?;
-    with_facade(&state, |facade| {
+    run_with_facade(&state, move |facade| {
+        let cwd = resolve_active_cwd()?;
         let payload = facade
             .thread_resume(&thread_id)
             .map_err(|error| error.to_string())?;
-        let resolved_thread_id = extract_thread_id(&payload).unwrap_or(thread_id);
+        let resolved_thread_id = extract_thread_id(&payload).unwrap_or_else(|| thread_id.clone());
         Ok(ThreadSessionResult {
             thread_id: resolved_thread_id,
             cwd: cwd.cwd.clone(),
@@ -194,23 +201,24 @@ pub fn thread_resume(
             workspace_warning: cwd.warning.clone(),
         })
     })
+    .await
 }
 
 #[tauri::command]
-pub fn turn_start(
+pub async fn turn_start(
     state: State<'_, SessionRuntimeState>,
     thread_id: String,
     text: String,
 ) -> Result<TurnStartResult, String> {
-    let trimmed = text.trim();
+    let trimmed = text.trim().to_string();
     if trimmed.is_empty() {
         return Err("turn/start requires non-empty input text".to_string());
     }
 
-    let cwd = workspace_resolve_active_cwd()?;
-    with_facade(&state, |facade| {
+    run_with_facade(&state, move |facade| {
+        let cwd = resolve_active_cwd()?;
         let payload = facade
-            .turn_start(&thread_id, trimmed, &cwd.cwd)
+            .turn_start(&thread_id, &trimmed, &cwd.cwd)
             .map_err(|error| error.to_string())?;
         Ok(TurnStartResult {
             thread_id,
@@ -220,24 +228,26 @@ pub fn turn_start(
             workspace_warning: cwd.warning.clone(),
         })
     })
+    .await
 }
 
 #[tauri::command]
-pub fn turn_interrupt(
+pub async fn turn_interrupt(
     state: State<'_, SessionRuntimeState>,
     thread_id: String,
     turn_id: String,
 ) -> Result<(), String> {
-    with_facade(&state, |facade| {
+    run_with_facade(&state, move |facade| {
         let _ = facade
             .turn_interrupt(&thread_id, &turn_id)
             .map_err(|error| error.to_string())?;
         Ok(())
     })
+    .await
 }
 
 #[tauri::command]
-pub fn approval_respond(
+pub async fn approval_respond(
     state: State<'_, SessionRuntimeState>,
     request_id: u64,
     decision: Value,
@@ -246,33 +256,43 @@ pub fn approval_respond(
         return Err("approval decision must not be null".to_string());
     }
 
-    with_facade(&state, |facade| {
+    run_with_facade(&state, move |facade| {
         facade
             .respond_to_server_request(request_id, json!({ "decision": decision }))
             .map_err(|error| error.to_string())
     })
+    .await
 }
 
 #[tauri::command]
-pub fn diagnostics_drain_stderr(
+pub async fn diagnostics_drain_stderr(
     state: State<'_, SessionRuntimeState>,
 ) -> Result<Vec<String>, String> {
-    with_facade(&state, |facade| {
+    run_with_facade(&state, |facade| {
         facade.drain_stderr().map_err(|error| error.to_string())
     })
+    .await
 }
 
 #[tauri::command]
-pub fn diagnostics_export_logs(
+pub async fn diagnostics_export_logs(
     state: State<'_, SessionRuntimeState>,
 ) -> Result<DiagnosticsExportResult, String> {
-    let snapshot = load_snapshot().map_err(|error| error.to_string())?;
-    let home = paths::home_dir().map_err(|error| error.to_string())?;
-    let lines = with_facade(&state, |facade| {
+    let (snapshot, home) = run_blocking_task(|| {
+        let snapshot = load_snapshot().map_err(|error| error.to_string())?;
+        let home = paths::home_dir().map_err(|error| error.to_string())?;
+        Ok((snapshot, home))
+    })
+    .await?;
+    let lines = run_with_facade(&state, |facade| {
         facade.drain_stderr().map_err(|error| error.to_string())
-    })?;
+    })
+    .await?;
     let filtered = filter_diagnostics_lines(&lines, snapshot.config.diagnostics.log_level);
-    write_diagnostics_log(&home, &filtered).map_err(|error| error.to_string())
+    run_blocking_task(move || {
+        write_diagnostics_log(&home, &filtered).map_err(|error| error.to_string())
+    })
+    .await
 }
 
 fn filter_diagnostics_lines(lines: &[String], level: LogLevel) -> Vec<String> {

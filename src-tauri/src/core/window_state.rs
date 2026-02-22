@@ -7,6 +7,7 @@ use std::path::Path;
 use super::config::{load_or_default, save_system_update, ConfigError, WindowPlacement};
 use super::monitor::{intersection_area, primary_monitor, MonitorWorkArea};
 use super::paths;
+use super::session_runtime::run_blocking_task;
 
 const MIN_WIDTH: u32 = 480;
 const MIN_HEIGHT: u32 = 360;
@@ -22,9 +23,12 @@ pub fn window_restore_placement(
 }
 
 #[tauri::command]
-pub fn window_persist_placement(placement: WindowPlacement) -> Result<(), String> {
-    let config_path = paths::config_file_path().map_err(|error| error.to_string())?;
-    persist_window_placement_to_path(&config_path, placement).map_err(|error| error.to_string())
+pub async fn window_persist_placement(placement: WindowPlacement) -> Result<(), String> {
+    run_blocking_task(move || {
+        let config_path = paths::config_file_path().map_err(|error| error.to_string())?;
+        persist_window_placement_to_path(&config_path, placement).map_err(|error| error.to_string())
+    })
+    .await
 }
 
 pub fn restore_window_placement(

@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::State;
 
-use super::session_runtime::{with_facade, SessionRuntimeState};
+use super::session_runtime::{run_with_facade, SessionRuntimeState};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -88,36 +88,41 @@ fn parse_login_start_result(payload: &Value) -> Result<AuthLoginStartResult, Str
 }
 
 #[tauri::command]
-pub fn auth_read_status(state: State<'_, SessionRuntimeState>) -> Result<AuthStatus, String> {
-    with_facade(&state, |facade| {
+pub async fn auth_read_status(state: State<'_, SessionRuntimeState>) -> Result<AuthStatus, String> {
+    run_with_facade(&state, |facade| {
         let payload = facade
             .account_read(false)
             .map_err(|error| error.to_string())?;
         Ok(auth_status_from_account_payload(&payload))
     })
+    .await
 }
 
 #[tauri::command]
-pub fn auth_login_start_chatgpt(
+pub async fn auth_login_start_chatgpt(
     state: State<'_, SessionRuntimeState>,
 ) -> Result<AuthLoginStartResult, String> {
-    with_facade(&state, |facade| {
+    run_with_facade(&state, |facade| {
         let payload = facade
             .account_login_start_chatgpt()
             .map_err(|error| error.to_string())?;
         parse_login_start_result(&payload)
     })
+    .await
 }
 
 #[tauri::command]
-pub fn auth_logout_and_read(state: State<'_, SessionRuntimeState>) -> Result<AuthStatus, String> {
-    with_facade(&state, |facade| {
+pub async fn auth_logout_and_read(
+    state: State<'_, SessionRuntimeState>,
+) -> Result<AuthStatus, String> {
+    run_with_facade(&state, |facade| {
         let _ = facade.account_logout().map_err(|error| error.to_string())?;
         let payload = facade
             .account_read(false)
             .map_err(|error| error.to_string())?;
         Ok(auth_status_from_account_payload(&payload))
     })
+    .await
 }
 
 #[cfg(test)]

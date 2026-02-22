@@ -6,7 +6,7 @@ describe("initialSessionState", () => {
     expect(initialSessionState).toEqual({
       appName: "minico",
       buildTarget: "desktop",
-      authView: "checking",
+      authView: "loginRequired",
       currentThreadId: null,
       activeTurnId: null,
     });

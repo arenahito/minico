@@ -9,7 +9,7 @@ export interface SessionState {
 export const initialSessionState: SessionState = {
   appName: "minico",
   buildTarget: "desktop",
-  authView: "checking",
+  authView: "loginRequired",
   currentThreadId: null,
   activeTurnId: null,
 };

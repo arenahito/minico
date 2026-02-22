@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use tauri::State;
 
@@ -7,13 +7,13 @@ use super::codex_facade::{CodexFacade, RealRuntime};
 use super::config::load_snapshot;
 
 pub struct SessionRuntimeState {
-    facade: Mutex<Option<CodexFacade<RealRuntime>>>,
+    facade: Arc<Mutex<Option<CodexFacade<RealRuntime>>>>,
 }
 
 impl Default for SessionRuntimeState {
     fn default() -> Self {
         Self {
-            facade: Mutex::new(None),
+            facade: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -32,12 +32,39 @@ fn create_facade() -> Result<CodexFacade<RealRuntime>, String> {
     Ok(facade)
 }
 
-pub fn with_facade<T>(
+pub async fn run_blocking_task<T>(
+    action: impl FnOnce() -> Result<T, String> + Send + 'static,
+) -> Result<T, String>
+where
+    T: Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(action)
+        .await
+        .map_err(|error| format!("blocking task join failed: {error}"))?
+}
+
+pub async fn run_with_facade<T>(
     state: &State<'_, SessionRuntimeState>,
+    action: impl FnOnce(&mut CodexFacade<RealRuntime>) -> Result<T, String> + Send + 'static,
+) -> Result<T, String>
+where
+    T: Send + 'static,
+{
+    let slot = facade_slot(state);
+    run_blocking_task(move || with_facade_slot(&slot, action)).await
+}
+
+pub fn facade_slot(
+    state: &State<'_, SessionRuntimeState>,
+) -> Arc<Mutex<Option<CodexFacade<RealRuntime>>>> {
+    Arc::clone(&state.facade)
+}
+
+pub fn with_facade_slot<T>(
+    slot: &Arc<Mutex<Option<CodexFacade<RealRuntime>>>>,
     action: impl FnOnce(&mut CodexFacade<RealRuntime>) -> Result<T, String>,
 ) -> Result<T, String> {
-    let mut guard = state
-        .facade
+    let mut guard = slot
         .lock()
         .map_err(|_| "session runtime lock poisoned".to_string())?;
     if guard.is_none() {

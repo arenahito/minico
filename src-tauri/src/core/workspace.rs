@@ -6,6 +6,7 @@ use serde::Serialize;
 
 use super::config::{load_or_default, save_system_update, ConfigError, MinicoConfig};
 use super::paths;
+use super::session_runtime::run_blocking_task;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -78,15 +79,7 @@ pub fn resolve_active_cwd_for_home(
     })
 }
 
-#[tauri::command]
-pub fn workspace_default_path() -> Result<String, String> {
-    let path = paths::default_workspace_path().map_err(|error| error.to_string())?;
-    fs::create_dir_all(&path).map_err(|error| error.to_string())?;
-    Ok(path.display().to_string())
-}
-
-#[tauri::command]
-pub fn workspace_resolve_active_cwd() -> Result<WorkspaceResolution, String> {
+pub fn resolve_active_cwd() -> Result<WorkspaceResolution, String> {
     let config_path = paths::config_file_path().map_err(|error| error.to_string())?;
     let mut config = load_or_default(&config_path).map_err(|error| error.to_string())?;
     let home = paths::home_dir().map_err(|error| error.to_string())?;
@@ -98,6 +91,21 @@ pub fn workspace_resolve_active_cwd() -> Result<WorkspaceResolution, String> {
     }
 
     Ok(resolution)
+}
+
+#[tauri::command]
+pub async fn workspace_default_path() -> Result<String, String> {
+    run_blocking_task(|| {
+        let path = paths::default_workspace_path().map_err(|error| error.to_string())?;
+        fs::create_dir_all(&path).map_err(|error| error.to_string())?;
+        Ok(path.display().to_string())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn workspace_resolve_active_cwd() -> Result<WorkspaceResolution, String> {
+    run_blocking_task(resolve_active_cwd).await
 }
 
 #[cfg(test)]

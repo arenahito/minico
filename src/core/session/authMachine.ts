@@ -43,7 +43,7 @@ export type AuthMachineEvent =
   | { type: "failed"; message: string };
 
 export const initialAuthMachineState: AuthMachineState = {
-  view: "checking",
+  view: "loginRequired",
   accountEmail: null,
   message: null,
   rawAuthMode: null,
@@ -75,7 +75,6 @@ export function reduceAuthMachine(
     case "bootstrapRequested":
       return {
         ...state,
-        view: "checking",
         message: null,
       };
     case "statusLoaded":
@@ -91,7 +90,6 @@ export function reduceAuthMachine(
       if (event.success) {
         return {
           ...state,
-          view: "checking",
           message: null,
         };
       }
@@ -145,4 +143,3 @@ export async function startChatgptLogin(): Promise<AuthLoginStartResult> {
 export async function logoutAndReadAuth(): Promise<BackendAuthStatus> {
   return invoke<BackendAuthStatus>("auth_logout_and_read");
 }
-

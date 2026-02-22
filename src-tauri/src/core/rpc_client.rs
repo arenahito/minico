@@ -184,6 +184,10 @@ impl RpcClient {
                     }
                 }
             }
+
+            // If the reader stream ends, pending requests should fail fast
+            // instead of waiting for request timeouts.
+            pending.lock().expect("pending map lock").clear();
         });
     }
 
@@ -257,7 +261,7 @@ mod tests {
     use std::io::{self, Read, Write};
     use std::sync::{mpsc, Arc, Mutex};
     use std::thread;
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     use serde_json::json;
 
@@ -492,5 +496,36 @@ mod tests {
                 params: json!({"ok": true}),
             }
         );
+    }
+
+    #[test]
+    fn reader_shutdown_unblocks_pending_request_without_timeout() {
+        let (client_to_server_tx, client_to_server_rx) = mpsc::channel();
+        let (server_to_client_tx, server_to_client_rx) = mpsc::channel();
+        let rpc = RpcClient::new(
+            ChannelWriter {
+                tx: client_to_server_tx,
+            },
+            ChannelReader::new(server_to_client_rx),
+        );
+
+        let server = thread::spawn(move || {
+            let _ = client_to_server_rx.recv().expect("request bytes");
+            drop(server_to_client_tx);
+        });
+
+        let start = Instant::now();
+        let error = rpc
+            .request(
+                "account/read",
+                json!({ "refreshToken": false }),
+                Duration::from_secs(5),
+            )
+            .expect_err("must fail when reader stream closes");
+        let elapsed = start.elapsed();
+
+        assert!(matches!(error, super::RpcClientError::ChannelClosed(_)));
+        assert!(elapsed < Duration::from_secs(2));
+        server.join().expect("server join");
     }
 }

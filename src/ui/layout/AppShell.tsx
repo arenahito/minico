@@ -129,6 +129,14 @@ function applyTurnEvent(
   }
 }
 
+function shouldAutoRefreshAuth(view: AuthMachineState["view"]): boolean {
+  return (
+    view === "loginRequired" ||
+    view === "loginInProgress" ||
+    view === "unsupportedApiKey"
+  );
+}
+
 export function AppShell() {
   const [auth, setAuth] = useState<AuthMachineState>(initialAuthMachineState);
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
@@ -144,6 +152,9 @@ export function AppShell() {
   const [busy, setBusy] = useState(false);
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [error, setError] = useState<UserFacingError | null>(null);
+  const [authRefreshKey, setAuthRefreshKey] = useState(0);
+  const [authStatusChecking, setAuthStatusChecking] = useState(false);
+  const authRefreshInFlightRef = useRef(false);
   const pollInFlightRef = useRef(false);
   const autoCancelInFlightRef = useRef<Set<number>>(new Set());
 
@@ -167,12 +178,15 @@ export function AppShell() {
   }, []);
 
   useEffect(() => {
-    if (auth.view !== "checking") {
+    if (authRefreshInFlightRef.current) {
       return;
     }
 
     let cancelled = false;
-    void readAuthStatusWithTimeout(12000)
+    authRefreshInFlightRef.current = true;
+    setAuthStatusChecking(true);
+    setAuth((current) => reduceAuthMachine(current, { type: "bootstrapRequested" }));
+    void readAuthStatusWithTimeout(30000)
       .then((status) => {
         if (!cancelled) {
           setAuth((current) =>
@@ -194,10 +208,32 @@ export function AppShell() {
             }),
           );
         }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setAuthStatusChecking(false);
+        }
+        authRefreshInFlightRef.current = false;
       });
 
     return () => {
       cancelled = true;
+    };
+  }, [authRefreshKey]);
+
+  useEffect(() => {
+    if (!shouldAutoRefreshAuth(auth.view)) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      if (!authRefreshInFlightRef.current) {
+        setAuthRefreshKey((current) => current + 1);
+      }
+    }, 10000);
+
+    return () => {
+      window.clearInterval(timer);
     };
   }, [auth.view]);
 
@@ -265,29 +301,7 @@ export function AppShell() {
               event.method === "account/login/completed" &&
               event.params.success === true
             ) {
-              void readAuthStatusWithTimeout(12000)
-                .then((status) => {
-                  if (!cancelled) {
-                    setAuth((current) =>
-                      reduceAuthMachine(current, {
-                        type: "statusLoaded",
-                        status,
-                      }),
-                    );
-                  }
-                })
-                .catch((reason) => {
-                  if (!cancelled) {
-                    const mapped = mapErrorToUserFacing(reason);
-                    setError(mapped);
-                    setAuth((current) =>
-                      reduceAuthMachine(current, {
-                        type: "failed",
-                        message: mapped.message,
-                      }),
-                    );
-                  }
-                });
+              setAuthRefreshKey((current) => current + 1);
             }
           }
 
@@ -508,15 +522,15 @@ export function AppShell() {
     }
   }
 
+  function handleRetryStatusCheck(): void {
+    if (authRefreshInFlightRef.current) {
+      return;
+    }
+    setAuthRefreshKey((current) => current + 1);
+  }
+
   return (
     <div className="app-shell">
-      <header className="app-header">
-        <h1 className="app-title">minico</h1>
-        <p className="app-subtitle">
-          ChatGPT OAuth only, app-server threads, and explicit approvals.
-        </p>
-      </header>
-
       {error ? <ErrorBanner error={error} onDismiss={() => setError(null)} /> : null}
 
       {auth.view === "loggedIn" ? (
@@ -552,8 +566,10 @@ export function AppShell() {
           <LoginView
             auth={auth}
             busy={busy}
+            statusChecking={authStatusChecking}
             onStartLogin={() => void handleStartLogin()}
             onLogoutAndContinue={() => void handleLogoutAndContinue()}
+            onRetryStatus={handleRetryStatusCheck}
           />
         </main>
       )}

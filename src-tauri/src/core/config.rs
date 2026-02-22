@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use super::paths;
+use super::session_runtime::run_blocking_task;
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
@@ -251,20 +252,25 @@ pub fn load_snapshot() -> Result<SettingsSnapshot, ConfigError> {
 }
 
 #[tauri::command]
-pub fn settings_read() -> Result<SettingsSnapshot, String> {
-    load_snapshot().map_err(|error| error.to_string())
+pub async fn settings_read() -> Result<SettingsSnapshot, String> {
+    run_blocking_task(|| load_snapshot().map_err(|error| error.to_string())).await
 }
 
 #[tauri::command]
-pub fn settings_write(config: MinicoConfig) -> Result<SettingsSnapshot, String> {
-    let config_path = paths::config_file_path().map_err(|error| error.to_string())?;
-    save(&config_path, &config).map_err(|error| error.to_string())?;
-    load_snapshot().map_err(|error| error.to_string())
+pub async fn settings_write(config: MinicoConfig) -> Result<SettingsSnapshot, String> {
+    run_blocking_task(move || {
+        let config_path = paths::config_file_path().map_err(|error| error.to_string())?;
+        save(&config_path, &config).map_err(|error| error.to_string())?;
+        load_snapshot().map_err(|error| error.to_string())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn settings_validate_codex_path(path: Option<String>) -> Result<PathValidationResult, String> {
-    match validate_codex_path(path.as_deref()) {
+pub async fn settings_validate_codex_path(
+    path: Option<String>,
+) -> Result<PathValidationResult, String> {
+    run_blocking_task(move || match validate_codex_path(path.as_deref()) {
         Ok(()) => Ok(PathValidationResult {
             valid: true,
             message: None,
@@ -273,7 +279,8 @@ pub fn settings_validate_codex_path(path: Option<String>) -> Result<PathValidati
             valid: false,
             message: Some(error.to_string()),
         }),
-    }
+    })
+    .await
 }
 
 #[cfg(test)]

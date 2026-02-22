@@ -53,5 +53,17 @@ describe("authMachine", () => {
     expect(next.view).toBe("loginRequired");
     expect(next.message).toBe("cancelled");
   });
-});
 
+  it("keeps current view on login completion success", () => {
+    const inProgress = reduceAuthMachine(initialAuthMachineState, {
+      type: "loginStarted",
+      loginId: "login-1",
+    });
+    const next = reduceAuthMachine(inProgress, {
+      type: "loginCompletedNotification",
+      success: true,
+      error: null,
+    });
+    expect(next.view).toBe("loginInProgress");
+  });
+});

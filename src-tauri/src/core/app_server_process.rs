@@ -21,11 +21,24 @@ pub struct AppServerCommand {
 
 impl AppServerCommand {
     pub fn from_codex_path(codex_path: Option<&str>) -> Self {
-        let executable = codex_path.unwrap_or("codex").to_string();
+        let executable = codex_path
+            .map(ToString::to_string)
+            .unwrap_or_else(default_codex_executable);
         Self {
             executable,
             args: vec!["app-server".to_string()],
         }
+    }
+}
+
+fn default_codex_executable() -> String {
+    #[cfg(windows)]
+    {
+        "codex.cmd".to_string()
+    }
+    #[cfg(not(windows))]
+    {
+        "codex".to_string()
     }
 }
 
@@ -184,6 +197,9 @@ mod tests {
     #[test]
     fn uses_path_lookup_when_codex_path_is_missing() {
         let command = AppServerCommand::from_codex_path(None);
+        #[cfg(windows)]
+        assert_eq!(command.executable, "codex.cmd");
+        #[cfg(not(windows))]
         assert_eq!(command.executable, "codex");
         assert_eq!(command.args, vec!["app-server"]);
     }

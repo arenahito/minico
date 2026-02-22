@@ -53,27 +53,9 @@ pre {
 
 .app-shell {
   min-height: 100vh;
-  display: grid;
-  grid-template-rows: auto auto 1fr;
+  display: flex;
+  flex-direction: column;
   animation: warm-fade-in 220ms ease;
-}
-
-.app-header {
-  padding: var(--space-5) var(--space-6);
-  background: linear-gradient(130deg, var(--bg-accent), var(--bg-accent-soft));
-  color: var(--fg-inverse);
-  box-shadow: 0 6px 24px rgba(16, 47, 64, 0.24);
-}
-
-.app-title {
-  margin: 0;
-  font-size: clamp(1.35rem, 2.2vw, 1.8rem);
-  letter-spacing: 0.02em;
-}
-
-.app-subtitle {
-  margin: var(--space-2) 0 0;
-  opacity: 0.92;
 }
 
 .error-banner {
@@ -109,6 +91,7 @@ pre {
 }
 
 .app-main {
+  flex: 1;
   display: grid;
   grid-template-columns: minmax(240px, 320px) 1fr;
   gap: var(--space-4);
@@ -120,6 +103,7 @@ pre {
 }
 
 .auth-main {
+  flex: 1;
   display: grid;
   place-items: center;
   padding: var(--space-6);
@@ -446,10 +430,6 @@ button:disabled {
 }
 
 @media (max-width: 1024px) {
-  .app-header {
-    padding: var(--space-4);
-  }
-
   .app-main {
     grid-template-columns: 1fr;
     padding: var(--space-3);
@@ -459,4 +439,3 @@ button:disabled {
     margin: var(--space-3);
   }
 }
-
