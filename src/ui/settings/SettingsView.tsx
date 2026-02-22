@@ -206,13 +206,6 @@ export function SettingsView() {
         <div className="settings-actions">
           <button
             type="button"
-            onClick={() => void onValidatePath()}
-            disabled={saving}
-          >
-            Validate path
-          </button>
-          <button
-            type="button"
             onClick={() => void onExportDiagnostics()}
             disabled={saving}
           >

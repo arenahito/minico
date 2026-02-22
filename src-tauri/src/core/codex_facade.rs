@@ -160,7 +160,7 @@ impl<R: RpcRuntime> CodexFacade<R> {
     pub fn thread_list_app_server_only(&mut self) -> Result<Value, CodexFacadeError> {
         self.request_json(
             "thread/list",
-            json!({ "sourceKinds": ["appServer", "unknown"] }),
+            json!({ "sourceKinds": ["vscode"] }),
         )
     }
 

@@ -351,7 +351,6 @@ pre {
 
 .thread-title {
   display: block;
-  font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -904,7 +903,7 @@ pre {
   margin-bottom: var(--space-3);
 }
 
-.settings-form input,
+.settings-form input:not([type="checkbox"]),
 .settings-form select {
   width: 100%;
   border: 1px solid var(--border-default);
@@ -930,6 +929,12 @@ pre {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+}
+
+.checkbox-row input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+  padding: 0;
 }
 
 .settings-actions {
@@ -971,8 +976,9 @@ pre {
   border-radius: var(--radius-lg);
   background: #fff;
   display: grid;
-  grid-template-rows: auto 1fr;
-  gap: var(--space-2);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0;
+  position: relative;
   padding: var(--space-3);
   overflow: hidden;
   animation: settings-modal-in 300ms ease;
@@ -983,7 +989,9 @@ pre {
 }
 
 .settings-modal-close {
-  justify-self: end;
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
   width: 36px;
   height: 36px;
   border: 1px solid var(--border-default);
@@ -1000,12 +1008,18 @@ pre {
   min-height: 0;
   overflow: auto;
   padding-right: var(--space-1);
+  padding-top: 0;
 }
 
 .settings-modal .status-card {
   border: none;
   background: transparent;
   padding: 0;
+  margin: 0;
+}
+
+.settings-modal .status-card h2 {
+  margin-top: 0;
 }
 
 .form-error {
