@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import { initialSessionState } from "./store";
 
 describe("initialSessionState", () => {
-  it("exposes bootstrap metadata", () => {
+  it("exposes initial session metadata", () => {
     expect(initialSessionState).toEqual({
-      stage: "bootstrap",
       appName: "minico",
       buildTarget: "desktop",
+      authView: "checking",
+      currentThreadId: null,
+      activeTurnId: null,
     });
   });
 });

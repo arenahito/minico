@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 use thiserror::Error;
 
 use super::app_server_process::{AppServerProcess, AppServerProcessError};
-use super::events::{JsonRpcErrorPayload, RpcResponsePayload};
+use super::events::{JsonRpcErrorPayload, RpcEvent, RpcResponsePayload};
 use super::lifecycle::LifecycleState;
 use super::retry::{backoff_delay, is_overload_response, RetryPolicy};
 
@@ -20,6 +20,9 @@ pub trait RpcRuntime {
         timeout: Duration,
     ) -> Result<RpcResponsePayload, String>;
     fn notify(&mut self, method: &str, params: Value) -> Result<(), String>;
+    fn respond_result(&mut self, id: u64, result: Value) -> Result<(), String>;
+    fn recv_event_timeout(&mut self, timeout: Duration) -> Result<Option<RpcEvent>, String>;
+    fn take_stderr_lines(&mut self) -> Result<Vec<String>, String>;
     fn is_running(&mut self) -> Result<bool, String>;
     fn restart(&mut self) -> Result<(), String>;
 }
@@ -60,6 +63,22 @@ impl RpcRuntime for RealRuntime {
         self.process
             .notify(method, params)
             .map_err(|error| error.to_string())
+    }
+
+    fn respond_result(&mut self, id: u64, result: Value) -> Result<(), String> {
+        self.process
+            .respond_result(id, result)
+            .map_err(|error| error.to_string())
+    }
+
+    fn recv_event_timeout(&mut self, timeout: Duration) -> Result<Option<RpcEvent>, String> {
+        self.process
+            .recv_event_timeout(timeout)
+            .map_err(|error| error.to_string())
+    }
+
+    fn take_stderr_lines(&mut self) -> Result<Vec<String>, String> {
+        Ok(self.process.take_stderr_lines())
     }
 
     fn is_running(&mut self) -> Result<bool, String> {
@@ -171,6 +190,30 @@ impl<R: RpcRuntime> CodexFacade<R> {
         )
     }
 
+    pub fn poll_event(&mut self, timeout: Duration) -> Result<Option<RpcEvent>, CodexFacadeError> {
+        self.ensure_ready()?;
+        self.runtime
+            .recv_event_timeout(timeout)
+            .map_err(CodexFacadeError::Runtime)
+    }
+
+    pub fn respond_to_server_request(
+        &mut self,
+        id: u64,
+        result: Value,
+    ) -> Result<(), CodexFacadeError> {
+        self.ensure_ready()?;
+        self.runtime
+            .respond_result(id, result)
+            .map_err(CodexFacadeError::Runtime)
+    }
+
+    pub fn drain_stderr(&mut self) -> Result<Vec<String>, CodexFacadeError> {
+        self.runtime
+            .take_stderr_lines()
+            .map_err(CodexFacadeError::Runtime)
+    }
+
     fn request_json(&mut self, method: &str, params: Value) -> Result<Value, CodexFacadeError> {
         self.ensure_ready()?;
 
@@ -261,7 +304,7 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        CodexFacade, CodexFacadeError, JsonRpcErrorPayload, LifecycleState, RetryPolicy,
+        CodexFacade, CodexFacadeError, JsonRpcErrorPayload, LifecycleState, RetryPolicy, RpcEvent,
         RpcResponsePayload, RpcRuntime,
     };
 
@@ -271,6 +314,9 @@ mod tests {
         request_log: Vec<String>,
         notify_log: Vec<String>,
         responses: VecDeque<RpcResponsePayload>,
+        events: VecDeque<RpcEvent>,
+        response_log: Vec<(u64, serde_json::Value)>,
+        stderr_lines: Vec<String>,
         restart_count: u32,
     }
 
@@ -300,6 +346,22 @@ mod tests {
         fn notify(&mut self, method: &str, _params: serde_json::Value) -> Result<(), String> {
             self.notify_log.push(method.to_string());
             Ok(())
+        }
+
+        fn respond_result(&mut self, id: u64, result: serde_json::Value) -> Result<(), String> {
+            self.response_log.push((id, result));
+            Ok(())
+        }
+
+        fn recv_event_timeout(
+            &mut self,
+            _timeout: std::time::Duration,
+        ) -> Result<Option<RpcEvent>, String> {
+            Ok(self.events.pop_front())
+        }
+
+        fn take_stderr_lines(&mut self) -> Result<Vec<String>, String> {
+            Ok(std::mem::take(&mut self.stderr_lines))
         }
 
         fn is_running(&mut self) -> Result<bool, String> {

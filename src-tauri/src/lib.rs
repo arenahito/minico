@@ -1,4 +1,5 @@
 mod core;
+use crate::core::session_runtime::SessionRuntimeState;
 
 #[tauri::command]
 fn app_ready_message() -> &'static str {
@@ -9,6 +10,7 @@ fn app_ready_message() -> &'static str {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .manage(SessionRuntimeState::default())
         .invoke_handler(tauri::generate_handler![
             app_ready_message,
             core::config::settings_read,
@@ -17,7 +19,19 @@ pub fn run() {
             core::workspace::workspace_default_path,
             core::workspace::workspace_resolve_active_cwd,
             core::window_state::window_restore_placement,
-            core::window_state::window_persist_placement
+            core::window_state::window_persist_placement,
+            core::auth::auth_read_status,
+            core::auth::auth_login_start_chatgpt,
+            core::auth::auth_logout_and_read,
+            core::thread_turn::session_poll_events,
+            core::thread_turn::thread_list,
+            core::thread_turn::thread_start,
+            core::thread_turn::thread_resume,
+            core::thread_turn::turn_start,
+            core::thread_turn::turn_interrupt,
+            core::thread_turn::approval_respond,
+            core::thread_turn::diagnostics_drain_stderr,
+            core::thread_turn::diagnostics_export_logs
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

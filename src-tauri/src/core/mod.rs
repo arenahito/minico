@@ -1,4 +1,5 @@
 pub mod app_server_process;
+pub mod auth;
 pub mod codex_facade;
 pub mod config;
 pub mod events;
@@ -8,5 +9,7 @@ pub mod monitor;
 pub mod paths;
 pub mod retry;
 pub mod rpc_client;
+pub mod session_runtime;
+pub mod thread_turn;
 pub mod window_state;
 pub mod workspace;
