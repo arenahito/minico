@@ -750,8 +750,9 @@ export function AppShell() {
     }
   }
 
-  async function handleSubmitPrompt(): Promise<void> {
-    const trimmed = composerValue.trim();
+  async function handleSubmitPrompt(composedPrompt?: string): Promise<void> {
+    const basePrompt = typeof composedPrompt === "string" ? composedPrompt : composerValue;
+    const trimmed = basePrompt.trim();
     if (!trimmed) {
       return;
     }
@@ -1116,7 +1117,7 @@ export function AppShell() {
               onComposerChange={setComposerValue}
               onSelectorChange={handleComposerSelectorChange}
               onCreateThread={() => void handleCreateThread()}
-              onSubmitPrompt={() => void handleSubmitPrompt()}
+              onSubmitPrompt={(nextPrompt) => void handleSubmitPrompt(nextPrompt)}
               onInterrupt={() => void handleInterruptTurn()}
             />
           </section>

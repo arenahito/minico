@@ -1,7 +1,18 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatView } from "./ChatView";
 import type { TurnStreamItem, TurnStreamState } from "../../core/chat/turnReducer";
+
+const openMock = vi.fn();
+const convertFileSrcMock = vi.fn();
+
+vi.mock("@tauri-apps/plugin-dialog", () => ({
+  open: (...args: unknown[]) => openMock(...args),
+}));
+
+vi.mock("@tauri-apps/api/core", () => ({
+  convertFileSrc: (...args: unknown[]) => convertFileSrcMock(...args),
+}));
 
 function turnState(activeTurnId: string | null): TurnStreamState {
   return {
@@ -25,8 +36,36 @@ function item(overrides: Partial<TurnStreamItem>): TurnStreamItem {
   };
 }
 
+function buildDroppedFile(path: string): File {
+  const fileName = path.split(/[\\/]/).pop() ?? "dropped.txt";
+  const file = new File(["dropped"], fileName, { type: "application/octet-stream" }) as File & {
+    path?: string;
+  };
+  file.path = path;
+  return file;
+}
+
+function buildDropDataTransfer(paths: string[]): DataTransfer {
+  const files = paths.map(buildDroppedFile);
+  return {
+    files,
+    items: [],
+    types: ["Files"],
+    dropEffect: "none",
+    getData: () => "",
+  } as unknown as DataTransfer;
+}
+
 afterEach(() => {
   cleanup();
+});
+
+beforeEach(() => {
+  openMock.mockReset();
+  convertFileSrcMock.mockReset();
+  convertFileSrcMock.mockImplementation(
+    (filePath: string) => `asset://localhost/${encodeURIComponent(filePath)}`,
+  );
 });
 
 describe("ChatView", () => {
@@ -212,6 +251,7 @@ describe("ChatView", () => {
 
     fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter", ctrlKey: true });
     expect(onSubmitPrompt).toHaveBeenCalledTimes(1);
+    expect(onSubmitPrompt).toHaveBeenCalledWith("hello");
   });
 
   it("does not submit prompt with ctrl+enter when input is empty", () => {
@@ -238,5 +278,202 @@ describe("ChatView", () => {
 
     fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter", ctrlKey: true });
     expect(onSubmitPrompt).not.toHaveBeenCalled();
+  });
+
+  it("renders inline path block for non-image attachment and allows removing it", async () => {
+    openMock.mockResolvedValueOnce(["C:\\work\\readme.md"]);
+    render(
+      <ChatView
+        turnState={turnState(null)}
+        items={[]}
+        threadLoading={false}
+        workspacePath="C:/workspace/demo"
+        composerValue="note"
+        selectorLabel="Select model"
+        selectorDisplay="gpt-5 / medium"
+        selectorOptions={[{ value: "gpt-5", label: "gpt-5" }]}
+        selectorValue="gpt-5"
+        busy={false}
+        onComposerChange={vi.fn()}
+        onSelectorChange={vi.fn(() => true)}
+        onCreateThread={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+        onInterrupt={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Add file" }));
+    await waitFor(() => {
+      expect(screen.getByText("C:\\work\\readme.md")).toBeVisible();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Remove readme.md" }));
+    expect(screen.queryByText("C:\\work\\readme.md")).toBeNull();
+  });
+
+  it("renders image preview for image attachment and allows removing it", async () => {
+    openMock.mockResolvedValueOnce(["C:\\work\\cat.png"]);
+    render(
+      <ChatView
+        turnState={turnState(null)}
+        items={[]}
+        threadLoading={false}
+        workspacePath="C:/workspace/demo"
+        composerValue=""
+        selectorLabel="Select model"
+        selectorDisplay="gpt-5 / medium"
+        selectorOptions={[{ value: "gpt-5", label: "gpt-5" }]}
+        selectorValue="gpt-5"
+        busy={false}
+        onComposerChange={vi.fn()}
+        onSelectorChange={vi.fn(() => true)}
+        onCreateThread={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+        onInterrupt={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Add file" }));
+    await waitFor(() => {
+      expect(screen.getByRole("img", { name: "cat.png" })).toBeVisible();
+    });
+    expect(convertFileSrcMock).toHaveBeenCalledWith("C:/work/cat.png");
+    fireEvent.click(screen.getByRole("button", { name: "Remove cat.png" }));
+    expect(screen.queryByRole("img", { name: "cat.png" })).toBeNull();
+  });
+
+  it("submits prompt with full-path attachment tokens prepended", async () => {
+    openMock.mockResolvedValueOnce(["C:\\work\\readme.md"]);
+    const onSubmitPrompt = vi.fn();
+    render(
+      <ChatView
+        turnState={turnState(null)}
+        items={[]}
+        threadLoading={false}
+        workspacePath="C:/workspace/demo"
+        composerValue="test prompt"
+        selectorLabel="Select model"
+        selectorDisplay="gpt-5 / medium"
+        selectorOptions={[{ value: "gpt-5", label: "gpt-5" }]}
+        selectorValue="gpt-5"
+        busy={false}
+        onComposerChange={vi.fn()}
+        onSelectorChange={vi.fn(() => true)}
+        onCreateThread={vi.fn()}
+        onSubmitPrompt={onSubmitPrompt}
+        onInterrupt={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Add file" }));
+    await waitFor(() => {
+      expect(screen.getByText("C:\\work\\readme.md")).toBeVisible();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send prompt" }));
+
+    expect(onSubmitPrompt).toHaveBeenCalledWith(
+      "[@readme.md](file:///C:/work/readme.md) test prompt",
+    );
+  });
+
+  it("renders attachment tokens in user message as attachment UI instead of raw text", () => {
+    render(
+      <ChatView
+        turnState={turnState(null)}
+        items={[
+          item({
+            role: "user",
+            itemType: "userMessage",
+            text: "[@cat.png](file:///C:/work/cat.png) [@readme.md](file:///C:/work/readme.md) この画像の説明",
+          }),
+        ]}
+        threadLoading={false}
+        workspacePath="C:/workspace/demo"
+        composerValue=""
+        selectorLabel="Select model"
+        selectorDisplay="gpt-5 / medium"
+        selectorOptions={[{ value: "gpt-5", label: "gpt-5" }]}
+        selectorValue="gpt-5"
+        busy={false}
+        onComposerChange={vi.fn()}
+        onSelectorChange={vi.fn(() => true)}
+        onCreateThread={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+        onInterrupt={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("img", { name: "cat.png" })).toBeVisible();
+    expect(screen.getByText("C:\\work\\readme.md")).toBeVisible();
+    expect(screen.getByText("この画像の説明")).toBeVisible();
+    expect(screen.queryByText(/\[@cat\.png\]/)).toBeNull();
+    expect(screen.queryByText(/\(file:\/\/\/C:\/work\/cat\.png\)/)).toBeNull();
+  });
+
+  it("attaches dropped files on the chat pane", async () => {
+    render(
+      <ChatView
+        turnState={turnState(null)}
+        items={[]}
+        threadLoading={false}
+        workspacePath="C:/workspace/demo"
+        composerValue=""
+        selectorLabel="Select model"
+        selectorDisplay="gpt-5 / medium"
+        selectorOptions={[{ value: "gpt-5", label: "gpt-5" }]}
+        selectorValue="gpt-5"
+        busy={false}
+        onComposerChange={vi.fn()}
+        onSelectorChange={vi.fn(() => true)}
+        onCreateThread={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+        onInterrupt={vi.fn()}
+      />,
+    );
+
+    const chatPane = screen.getByLabelText("chat view");
+    fireEvent.drop(chatPane, {
+      dataTransfer: buildDropDataTransfer(["C:\\work\\dropped.md"]),
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("C:\\work\\dropped.md")).toBeVisible();
+    });
+  });
+
+  it("submits dropped file attachment token with prompt", async () => {
+    const onSubmitPrompt = vi.fn();
+    render(
+      <ChatView
+        turnState={turnState(null)}
+        items={[]}
+        threadLoading={false}
+        workspacePath="C:/workspace/demo"
+        composerValue="drop test"
+        selectorLabel="Select model"
+        selectorDisplay="gpt-5 / medium"
+        selectorOptions={[{ value: "gpt-5", label: "gpt-5" }]}
+        selectorValue="gpt-5"
+        busy={false}
+        onComposerChange={vi.fn()}
+        onSelectorChange={vi.fn(() => true)}
+        onCreateThread={vi.fn()}
+        onSubmitPrompt={onSubmitPrompt}
+        onInterrupt={vi.fn()}
+      />,
+    );
+
+    const chatPane = screen.getByLabelText("chat view");
+    fireEvent.drop(chatPane, {
+      dataTransfer: buildDropDataTransfer(["C:\\work\\dropped.md"]),
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("C:\\work\\dropped.md")).toBeVisible();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Send prompt" }));
+    expect(onSubmitPrompt).toHaveBeenCalledWith(
+      "[@dropped.md](file:///C:/work/dropped.md) drop test",
+    );
   });
 });
