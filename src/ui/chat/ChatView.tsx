@@ -522,246 +522,256 @@ export function ChatView({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <div className="chat-stream" aria-live="polite">
-        {threadLoading ? (
-          <p className="chat-loading">Loading selected thread...</p>
-        ) : null}
-        {renderedItems.map((item) => {
-          const parsedUserMessage =
-            item.role === "user" ? parseMessageAttachmentPrefix(item.text) : null;
-          const userImageAttachments = parsedUserMessage
-            ? parsedUserMessage.attachments.filter((attachment) => attachment.kind === "image")
-            : [];
-          const userFileAttachments = parsedUserMessage
-            ? parsedUserMessage.attachments.filter((attachment) => attachment.kind === "file")
-            : [];
-
-          return (
-            <article
-              key={item.id}
-              className={`chat-item ${item.role === "user" ? "chat-item-user" : "chat-item-agent"}`}
-            >
-              {item.role === "user" ? (
-                <div className="chat-user-message">
-                  {userImageAttachments.length > 0 ? (
-                    <div className="chat-item-image-attachments" aria-label="Message image attachments">
-                      {userImageAttachments.map((attachment) => (
-                        <article key={attachment.key} className="chat-item-image-attachment">
-                          <img
-                            src={attachment.previewUrl ?? ""}
-                            alt={attachment.name}
-                            onError={(event) => {
-                              const target = event.currentTarget;
-                              if (target.dataset.fallbackApplied === "true") {
-                                return;
-                              }
-                              target.dataset.fallbackApplied = "true";
-                              target.src = attachment.uri;
-                            }}
-                          />
-                        </article>
-                      ))}
-                    </div>
-                  ) : null}
-                  {userFileAttachments.length > 0 ? (
-                    <div className="chat-item-inline-file-blocks" aria-label="Message file attachments">
-                      {userFileAttachments.map((attachment) => (
-                        <article key={attachment.key} className="chat-item-inline-file-block">
-                          <Paperclip size={14} aria-hidden="true" />
-                          <code title={attachment.displayPath}>{attachment.displayPath}</code>
-                        </article>
-                      ))}
-                    </div>
-                  ) : null}
-                  {parsedUserMessage && parsedUserMessage.bodyText.length > 0 ? (
-                    <p className="chat-item-body">{parsedUserMessage.bodyText}</p>
-                  ) : null}
-                  {!parsedUserMessage ||
-                  (parsedUserMessage.attachments.length === 0 &&
-                    parsedUserMessage.bodyText.length === 0) ? (
-                    <p className="chat-item-body">...</p>
-                  ) : null}
-                </div>
-              ) : (
-                <div className="chat-item-body chat-item-markdown">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.text || "..."}</ReactMarkdown>
-                </div>
-              )}
-              {!item.completed ? (
-                <footer className="chat-item-meta">
-                  <span className="chat-item-state">minico is thinking...</span>
-                </footer>
-              ) : null}
-            </article>
-          );
-        })}
-        {showAgentTypingIndicator ? (
-          <article
-            className="chat-item chat-item-agent chat-item-typing"
-            aria-label="minico thinking indicator"
-          >
-            <div className="typing-dots" aria-hidden="true">
-              <span />
-              <span />
-              <span />
-            </div>
-            <p className="typing-label">minico is thinking...</p>
-          </article>
-        ) : null}
-        {renderedItems.length === 0 && !showAgentTypingIndicator && !threadLoading ? (
-          <p className="chat-empty">No streamed items yet. Send a prompt to begin.</p>
-        ) : null}
-      </div>
-
-      <div className="composer">
-        <p className="chat-turn-cwd" title={workspacePath ?? ""}>
-          <code>{workspacePath ?? "(resolving cwd...)"}</code>
-        </p>
-        {imageAttachments.length > 0 ? (
-          <div className="composer-image-attachments" aria-label="Image attachments">
-            {imageAttachments.map((attachment) => (
-              <article key={attachment.id} className="composer-image-attachment">
-                <img
-                  src={attachment.previewUrl ?? ""}
-                  alt={attachment.name}
-                  onError={(event) => {
-                    const target = event.currentTarget;
-                    if (target.dataset.fallbackApplied === "true") {
-                      return;
-                    }
-                    target.dataset.fallbackApplied = "true";
-                    target.src = attachment.uri;
-                  }}
-                />
-                <button
-                  type="button"
-                  className="composer-attachment-remove"
-                  onClick={() => removeAttachmentById(attachment.id)}
-                  aria-label={`Remove ${attachment.name}`}
-                  title="Remove attachment"
-                >
-                  <X size={14} aria-hidden="true" />
-                </button>
-              </article>
-            ))}
-          </div>
-        ) : null}
-        {fileAttachments.length > 0 ? (
-          <div className="composer-inline-file-blocks" aria-label="File attachments">
-            {fileAttachments.map((attachment) => (
-              <article key={attachment.id} className="composer-inline-file-block">
-                <Paperclip size={14} aria-hidden="true" />
-                <code title={attachment.displayPath}>{attachment.displayPath}</code>
-                <button
-                  type="button"
-                  className="composer-attachment-remove"
-                  onClick={() => removeAttachmentById(attachment.id)}
-                  aria-label={`Remove ${attachment.name}`}
-                  title="Remove attachment"
-                >
-                  <X size={14} aria-hidden="true" />
-                </button>
-              </article>
-            ))}
-          </div>
-        ) : null}
-        <textarea
-          id="promptInput"
-          value={composerValue}
-          onChange={(event) => onComposerChange(event.currentTarget.value)}
-          onKeyDown={(event) => {
-            if (event.key !== "Enter" || !event.ctrlKey) {
-              return;
-            }
-            if (!canSubmit) {
-              return;
-            }
-            event.preventDefault();
-            onSubmitPrompt(composedPrompt);
-          }}
-          placeholder="Type a prompt for Codex..."
-          rows={4}
-        />
-        <div className="composer-toolbar">
-          <div className="composer-left-controls">
-            <button
-              type="button"
-              className="icon-button icon-button-muted"
-              onClick={() => void handlePickFile()}
-              aria-label="Add file"
-              title="Add file"
-            >
-              <Paperclip size={16} aria-hidden="true" />
-            </button>
-            <div className="model-select" ref={selectorRootRef}>
-              <button
-                type="button"
-                className="model-select-trigger"
-                aria-label={selectorLabel}
-                aria-haspopup="listbox"
-                aria-expanded={selectorOpen}
-                onClick={() => setSelectorOpen((current) => !current)}
-              >
-                <span className="model-select-value">{selectorDisplay}</span>
-                <ChevronDown size={15} aria-hidden="true" />
-              </button>
-              {selectorOpen ? (
-                <ul className="model-select-menu" role="listbox" aria-label={selectorLabel}>
-                  {selectorOptions.map((option) => (
-                    <li key={option.value}>
-                      <button
-                        type="button"
-                        role="option"
-                        aria-selected={selectorValue === option.value}
-                        className="model-select-option"
-                        onClick={() => {
-                          const shouldClose = onSelectorChange(option.value);
-                          if (shouldClose) {
-                            setSelectorOpen(false);
-                          }
-                        }}
-                      >
-                        {option.label}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </div>
-            <button
-              type="button"
-              className="icon-button icon-button-muted"
-              onClick={onCreateThread}
-              aria-label="Create new thread"
-              title="New thread"
-            >
-              <ListPlus size={16} aria-hidden="true" />
-            </button>
-          </div>
-          <div className="composer-actions">
-            <button
-              type="button"
-              className="icon-button icon-button-muted"
-              onClick={onInterrupt}
-              disabled={!turnState.activeTurnId || busy}
-              aria-label="Interrupt turn"
-              title="Interrupt turn"
-            >
-              <Square size={16} aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              className="icon-button icon-button-primary"
-              onClick={() => onSubmitPrompt(composedPrompt)}
-              disabled={!canSubmit}
-              aria-label={busy ? "Sending prompt" : "Send prompt"}
-              title={busy ? "Sending..." : "Send"}
-            >
-              <Send size={18} aria-hidden="true" />
-            </button>
-          </div>
+      {threadLoading ? (
+        <div className="chat-pane-loading" role="status" aria-live="polite">
+          <img
+            className="chat-pane-loading-image"
+            src="/tauri.svg"
+            alt="Loading selected thread"
+          />
+          <p className="chat-pane-loading-text">Loading selected thread...</p>
         </div>
-      </div>
+      ) : (
+        <>
+          <div className="chat-stream" aria-live="polite">
+            {renderedItems.map((item) => {
+              const parsedUserMessage =
+                item.role === "user" ? parseMessageAttachmentPrefix(item.text) : null;
+              const userImageAttachments = parsedUserMessage
+                ? parsedUserMessage.attachments.filter((attachment) => attachment.kind === "image")
+                : [];
+              const userFileAttachments = parsedUserMessage
+                ? parsedUserMessage.attachments.filter((attachment) => attachment.kind === "file")
+                : [];
+
+              return (
+                <article
+                  key={item.id}
+                  className={`chat-item ${item.role === "user" ? "chat-item-user" : "chat-item-agent"}`}
+                >
+                  {item.role === "user" ? (
+                    <div className="chat-user-message">
+                      {userImageAttachments.length > 0 ? (
+                        <div className="chat-item-image-attachments" aria-label="Message image attachments">
+                          {userImageAttachments.map((attachment) => (
+                            <article key={attachment.key} className="chat-item-image-attachment">
+                              <img
+                                src={attachment.previewUrl ?? ""}
+                                alt={attachment.name}
+                                onError={(event) => {
+                                  const target = event.currentTarget;
+                                  if (target.dataset.fallbackApplied === "true") {
+                                    return;
+                                  }
+                                  target.dataset.fallbackApplied = "true";
+                                  target.src = attachment.uri;
+                                }}
+                              />
+                            </article>
+                          ))}
+                        </div>
+                      ) : null}
+                      {userFileAttachments.length > 0 ? (
+                        <div className="chat-item-inline-file-blocks" aria-label="Message file attachments">
+                          {userFileAttachments.map((attachment) => (
+                            <article key={attachment.key} className="chat-item-inline-file-block">
+                              <Paperclip size={14} aria-hidden="true" />
+                              <code title={attachment.displayPath}>{attachment.displayPath}</code>
+                            </article>
+                          ))}
+                        </div>
+                      ) : null}
+                      {parsedUserMessage && parsedUserMessage.bodyText.length > 0 ? (
+                        <p className="chat-item-body">{parsedUserMessage.bodyText}</p>
+                      ) : null}
+                      {!parsedUserMessage ||
+                      (parsedUserMessage.attachments.length === 0 &&
+                        parsedUserMessage.bodyText.length === 0) ? (
+                        <p className="chat-item-body">...</p>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div className="chat-item-body chat-item-markdown">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.text || "..."}</ReactMarkdown>
+                    </div>
+                  )}
+                  {!item.completed ? (
+                    <footer className="chat-item-meta">
+                      <span className="chat-item-state">minico is thinking...</span>
+                    </footer>
+                  ) : null}
+                </article>
+              );
+            })}
+            {showAgentTypingIndicator ? (
+              <article
+                className="chat-item chat-item-agent chat-item-typing"
+                aria-label="minico thinking indicator"
+              >
+                <div className="typing-dots" aria-hidden="true">
+                  <span />
+                  <span />
+                  <span />
+                </div>
+                <p className="typing-label">minico is thinking...</p>
+              </article>
+            ) : null}
+            {renderedItems.length === 0 && !showAgentTypingIndicator ? (
+              <p className="chat-empty">No streamed items yet. Send a prompt to begin.</p>
+            ) : null}
+          </div>
+
+          <div className="composer">
+            <p className="chat-turn-cwd" title={workspacePath ?? ""}>
+              <code>{workspacePath ?? "(resolving cwd...)"}</code>
+            </p>
+            {imageAttachments.length > 0 ? (
+              <div className="composer-image-attachments" aria-label="Image attachments">
+                {imageAttachments.map((attachment) => (
+                  <article key={attachment.id} className="composer-image-attachment">
+                    <img
+                      src={attachment.previewUrl ?? ""}
+                      alt={attachment.name}
+                      onError={(event) => {
+                        const target = event.currentTarget;
+                        if (target.dataset.fallbackApplied === "true") {
+                          return;
+                        }
+                        target.dataset.fallbackApplied = "true";
+                        target.src = attachment.uri;
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="composer-attachment-remove"
+                      onClick={() => removeAttachmentById(attachment.id)}
+                      aria-label={`Remove ${attachment.name}`}
+                      title="Remove attachment"
+                    >
+                      <X size={14} aria-hidden="true" />
+                    </button>
+                  </article>
+                ))}
+              </div>
+            ) : null}
+            {fileAttachments.length > 0 ? (
+              <div className="composer-inline-file-blocks" aria-label="File attachments">
+                {fileAttachments.map((attachment) => (
+                  <article key={attachment.id} className="composer-inline-file-block">
+                    <Paperclip size={14} aria-hidden="true" />
+                    <code title={attachment.displayPath}>{attachment.displayPath}</code>
+                    <button
+                      type="button"
+                      className="composer-attachment-remove"
+                      onClick={() => removeAttachmentById(attachment.id)}
+                      aria-label={`Remove ${attachment.name}`}
+                      title="Remove attachment"
+                    >
+                      <X size={14} aria-hidden="true" />
+                    </button>
+                  </article>
+                ))}
+              </div>
+            ) : null}
+            <textarea
+              id="promptInput"
+              value={composerValue}
+              onChange={(event) => onComposerChange(event.currentTarget.value)}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter" || !event.ctrlKey) {
+                  return;
+                }
+                if (!canSubmit) {
+                  return;
+                }
+                event.preventDefault();
+                onSubmitPrompt(composedPrompt);
+              }}
+              placeholder="Type a prompt for Codex..."
+              rows={4}
+            />
+            <div className="composer-toolbar">
+              <div className="composer-left-controls">
+                <button
+                  type="button"
+                  className="icon-button icon-button-muted"
+                  onClick={() => void handlePickFile()}
+                  aria-label="Add file"
+                  title="Add file"
+                >
+                  <Paperclip size={16} aria-hidden="true" />
+                </button>
+                <div className="model-select" ref={selectorRootRef}>
+                  <button
+                    type="button"
+                    className="model-select-trigger"
+                    aria-label={selectorLabel}
+                    aria-haspopup="listbox"
+                    aria-expanded={selectorOpen}
+                    onClick={() => setSelectorOpen((current) => !current)}
+                  >
+                    <span className="model-select-value">{selectorDisplay}</span>
+                    <ChevronDown size={15} aria-hidden="true" />
+                  </button>
+                  {selectorOpen ? (
+                    <ul className="model-select-menu" role="listbox" aria-label={selectorLabel}>
+                      {selectorOptions.map((option) => (
+                        <li key={option.value}>
+                          <button
+                            type="button"
+                            role="option"
+                            aria-selected={selectorValue === option.value}
+                            className="model-select-option"
+                            onClick={() => {
+                              const shouldClose = onSelectorChange(option.value);
+                              if (shouldClose) {
+                                setSelectorOpen(false);
+                              }
+                            }}
+                          >
+                            {option.label}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+                <button
+                  type="button"
+                  className="icon-button icon-button-muted"
+                  onClick={onCreateThread}
+                  aria-label="Create new thread"
+                  title="New thread"
+                >
+                  <ListPlus size={16} aria-hidden="true" />
+                </button>
+              </div>
+              <div className="composer-actions">
+                <button
+                  type="button"
+                  className="icon-button icon-button-muted"
+                  onClick={onInterrupt}
+                  disabled={!turnState.activeTurnId || busy}
+                  aria-label="Interrupt turn"
+                  title="Interrupt turn"
+                >
+                  <Square size={16} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="icon-button icon-button-primary"
+                  onClick={() => onSubmitPrompt(composedPrompt)}
+                  disabled={!canSubmit}
+                  aria-label={busy ? "Sending prompt" : "Send prompt"}
+                  title={busy ? "Sending..." : "Send"}
+                >
+                  <Send size={18} aria-hidden="true" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </section>
   );
 }

@@ -69,6 +69,15 @@ pre {
   }
 }
 
+@keyframes chat-loading-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @keyframes settings-overlay-in {
   from {
     opacity: 0;
@@ -650,6 +659,29 @@ pre {
   color: var(--fg-muted);
 }
 
+.chat-pane-loading {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: var(--space-3);
+  text-align: center;
+}
+
+.chat-pane-loading-image {
+  width: 56px;
+  height: 56px;
+  animation: chat-loading-spin 1.2s linear infinite;
+  opacity: 0.9;
+}
+
+.chat-pane-loading-text {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 0.92rem;
+}
+
 .chat-loading {
   margin: 0;
   color: var(--fg-muted);
@@ -1095,6 +1127,58 @@ pre {
 .approval-actions button:nth-child(3) {
   background: #fff2f2;
   color: #8f1f1f;
+}
+
+.toolbar-button,
+.thread-panel button,
+.icon-button,
+.model-select-trigger,
+.workspace-picker button,
+.settings-actions button,
+.settings-modal-close,
+.login-card button,
+.error-banner button,
+.approval-actions button {
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    color 140ms ease;
+}
+
+.toolbar-button:hover:not(:disabled),
+.thread-panel button:hover:not(:disabled),
+.icon-button:hover:not(:disabled),
+.model-select-trigger:hover:not(:disabled),
+.workspace-picker button:hover:not(:disabled),
+.settings-actions button:hover:not(:disabled),
+.settings-modal-close:hover:not(:disabled),
+.login-card button:hover:not(:disabled),
+.error-banner button:hover:not(:disabled),
+.approval-actions button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--focus-ring) 26%, var(--border-strong));
+  background: color-mix(in srgb, var(--bg-panel-2) 90%, white);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--focus-ring) 18%, white);
+}
+
+.icon-button-primary:hover:not(:disabled),
+.settings-actions button[type="submit"]:hover:not(:disabled),
+.login-card button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--bg-accent) 84%, black);
+  color: var(--fg-inverse);
+  border-color: color-mix(in srgb, var(--bg-accent) 68%, black);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--bg-accent) 38%, white);
+}
+
+.approval-actions button:first-child:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--success) 84%, black);
+  border-color: color-mix(in srgb, var(--success) 70%, black);
+}
+
+.approval-actions button:nth-child(3):hover:not(:disabled) {
+  background: color-mix(in srgb, #fff2f2 82%, #f4c9c9);
+  border-color: color-mix(in srgb, #8f1f1f 35%, var(--border-strong));
+  color: #7f1717;
 }
 
 button:disabled {
