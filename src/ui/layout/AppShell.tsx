@@ -1,7 +1,26 @@
+import { useEffect } from "react";
+
 import { initialSessionState } from "../../core/session/store";
+import {
+  initializeWindowPlacementLifecycle,
+  persistWindowPlacement,
+} from "../../core/window/windowStateClient";
 import { SettingsView } from "../settings/SettingsView";
 
 export function AppShell() {
+  useEffect(() => {
+    void initializeWindowPlacementLifecycle();
+    const handleBeforeUnload = () => {
+      void persistWindowPlacement();
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      void persistWindowPlacement();
+    };
+  }, []);
+
   return (
     <div className="app-shell">
       <header className="app-header">

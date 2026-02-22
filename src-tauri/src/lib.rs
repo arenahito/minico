@@ -15,7 +15,9 @@ pub fn run() {
             core::config::settings_write,
             core::config::settings_validate_codex_path,
             core::workspace::workspace_default_path,
-            core::workspace::workspace_resolve_active_cwd
+            core::workspace::workspace_resolve_active_cwd,
+            core::window_state::window_restore_placement,
+            core::window_state::window_persist_placement
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

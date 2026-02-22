@@ -88,12 +88,14 @@ pub struct WindowConfig {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
+#[serde(rename_all = "camelCase")]
 pub struct WindowPlacement {
     pub x: i32,
     pub y: i32,
     pub width: u32,
     pub height: u32,
     pub maximized: bool,
+    pub scale_factor: Option<f64>,
     #[serde(flatten)]
     pub extra: HashMap<String, serde_json::Value>,
 }
@@ -143,6 +145,7 @@ impl Default for WindowPlacement {
             width: 980,
             height: 720,
             maximized: false,
+            scale_factor: None,
             extra: HashMap::new(),
         }
     }

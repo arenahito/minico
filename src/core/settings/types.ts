@@ -6,6 +6,7 @@ export interface WindowPlacement {
   width: number;
   height: number;
   maximized: boolean;
+  scaleFactor?: number | null;
 }
 
 export interface MinicoConfig {
