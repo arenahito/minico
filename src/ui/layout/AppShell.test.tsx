@@ -1368,6 +1368,71 @@ describe("AppShell", () => {
     });
   });
 
+  it("does not persist null effort before startup model preference restore completes", async () => {
+    const preferenceDeferred = deferred<{
+      model: string;
+      effort: string | null;
+    }>();
+    loadModelPreferenceRecord.mockReturnValueOnce(preferenceDeferred.promise);
+
+    mockedInvoke.mockImplementation(async (command) => {
+      if (command === "auth_read_status") {
+        return {
+          state: "loggedIn",
+          accountEmail: "demo@example.com",
+          requiresOpenaiAuth: false,
+          rawAuthMode: "chatgpt",
+          message: null,
+        };
+      }
+      if (command === "thread_list") {
+        return { threads: [] };
+      }
+      if (command === "model_list") {
+        return {
+          models: [
+            {
+              id: "m1",
+              model: "gpt-5.2-codex",
+              displayName: "gpt-5.2-codex",
+              isDefault: true,
+              defaultReasoningEffort: "medium",
+              supportedReasoningEfforts: ["low", "medium", "high"],
+            },
+          ],
+        };
+      }
+      if (command === "workspace_resolve_active_cwd") {
+        return {
+          cwd: "C:/workspace/demo",
+          fallbackUsed: false,
+          warning: null,
+        };
+      }
+      if (command === "session_poll_events") {
+        return [];
+      }
+      return undefined;
+    });
+
+    render(<AppShell />);
+
+    await waitFor(() => {
+      expect(loadModelPreferenceRecord).toHaveBeenCalledTimes(1);
+    });
+    expect(persistModelPreferenceRecord).not.toHaveBeenCalled();
+
+    preferenceDeferred.resolve({
+      model: "gpt-5.2-codex",
+      effort: "high",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("gpt-5.2-codex / high")).toBeVisible();
+    });
+    expect(persistModelPreferenceRecord).not.toHaveBeenCalledWith("gpt-5.2-codex", null);
+  });
+
   it("keeps selected effort when reopening effort list for the same model", async () => {
     const user = userEvent.setup();
     mockedInvoke.mockImplementation(async (command) => {

@@ -374,6 +374,7 @@ export function AppShell() {
   const persistedThreadPanelOpenRef = useRef<boolean | null>(null);
   const persistedThreadPanelWidthRef = useRef<number | null>(null);
   const persistedModelPreferenceRef = useRef<string | null>(null);
+  const modelPreferenceReadyRef = useRef(false);
   const dragCleanupRef = useRef<(() => void) | null>(null);
   const pollInFlightRef = useRef(false);
   const autoCancelInFlightRef = useRef<Set<number>>(new Set());
@@ -680,6 +681,7 @@ export function AppShell() {
 
   useEffect(() => {
     if (auth.view !== "loggedIn") {
+      modelPreferenceReadyRef.current = false;
       setModelCatalog(FALLBACK_MODELS);
       setSelectedModel(FALLBACK_MODELS[0].model);
       setSelectedEffort(resolveEffortForModel(FALLBACK_MODELS[0]));
@@ -688,6 +690,7 @@ export function AppShell() {
       return;
     }
 
+    modelPreferenceReadyRef.current = false;
     let cancelled = false;
     async function bootstrapModelSelector(): Promise<void> {
       try {
@@ -731,6 +734,7 @@ export function AppShell() {
             : resolveEffortForModel(nextSummary);
 
         persistedModelPreferenceRef.current = modelPreferenceKey(nextModel, nextEffort);
+        modelPreferenceReadyRef.current = true;
         setSelectedModel(nextModel);
         setSelectedEffort(nextEffort);
         setSelectorStage("model");
@@ -741,6 +745,7 @@ export function AppShell() {
             FALLBACK_MODELS[0].model,
             fallbackEffort,
           );
+          modelPreferenceReadyRef.current = true;
           setModelCatalog(FALLBACK_MODELS);
           setSelectedModel(FALLBACK_MODELS[0].model);
           setSelectedEffort(fallbackEffort);
@@ -804,6 +809,10 @@ export function AppShell() {
   useEffect(() => {
     if (auth.view !== "loggedIn") {
       persistedModelPreferenceRef.current = null;
+      modelPreferenceReadyRef.current = false;
+      return;
+    }
+    if (!modelPreferenceReadyRef.current) {
       return;
     }
 
