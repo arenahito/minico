@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/arenahito/minico/compare/v0.2.0...v0.2.1) (2026-02-23)
+
+
+### Bug Fixes
+
+* **windows:** hide app-server console window on startup ([1c1cc8d](https://github.com/arenahito/minico/commit/1c1cc8d01b19564820a9169f417bcac2580d522a))
+
 ## [0.2.0](https://github.com/arenahito/minico/compare/v0.1.0...v0.2.0) (2026-02-23)
 
 
