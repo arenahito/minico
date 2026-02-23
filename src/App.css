@@ -348,17 +348,19 @@ pre {
   overflow: auto;
 }
 
-.thread-list-item {
+.thread-panel .thread-list-item {
   width: 100%;
   text-align: left;
   display: grid;
   gap: var(--space-1);
-  border: 1px solid var(--border-default);
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
-  background: var(--bg-panel-2);
+  background: transparent;
+  box-shadow: none;
 }
 
 .thread-list-item.is-active {
+  background: var(--bg-panel-2);
   border-color: var(--focus-ring);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--focus-ring) 35%, var(--surface-base));
 }
