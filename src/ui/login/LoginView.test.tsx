@@ -13,38 +13,47 @@ function state(view: AuthMachineState["view"]): AuthMachineState {
   };
 }
 
+function commonProps() {
+  return {
+    busy: false,
+    statusChecking: false,
+    startupChecking: false,
+    startupCheckSlow: false,
+    codexHomeInput: "C:/Users/test/.minico/codex",
+    onCodexHomeInputChange: vi.fn(),
+    onCodexHomeBlur: vi.fn(),
+    onPickCodexHomeFolder: vi.fn(),
+    onResetCodexHomeDefault: vi.fn(),
+    onStartLogin: vi.fn(),
+    onLogoutAndContinue: vi.fn(),
+  };
+}
+
 afterEach(() => {
   cleanup();
 });
 
 describe("LoginView", () => {
   it("renders login required branch", () => {
+    const props = commonProps();
     render(
       <LoginView
         auth={state("loginRequired")}
-        busy={false}
-        statusChecking={false}
-        startupChecking={false}
-        startupCheckSlow={false}
-        onStartLogin={vi.fn()}
-        onLogoutAndContinue={vi.fn()}
-        onRetryStatus={vi.fn()}
+        {...props}
       />,
     );
     expect(screen.getByRole("heading", { name: "Login required" })).toBeVisible();
+    expect(screen.getByLabelText("CODEX_HOME")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Browse CODEX_HOME folder" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Use default CODEX_HOME" })).toBeVisible();
   });
 
   it("renders unsupported branch", () => {
+    const props = commonProps();
     render(
       <LoginView
         auth={state("unsupportedApiKey")}
-        busy={false}
-        statusChecking={false}
-        startupChecking={false}
-        startupCheckSlow={false}
-        onStartLogin={vi.fn()}
-        onLogoutAndContinue={vi.fn()}
-        onRetryStatus={vi.fn()}
+        {...props}
       />,
     );
     expect(
@@ -52,51 +61,42 @@ describe("LoginView", () => {
     ).toBeVisible();
   });
 
-  it("shows retry action during login-in-progress", () => {
+  it("shows login-in-progress branch without retry button", () => {
+    const props = commonProps();
     render(
       <LoginView
         auth={state("loginInProgress")}
-        busy={false}
-        statusChecking={false}
-        startupChecking={false}
-        startupCheckSlow={false}
-        onStartLogin={vi.fn()}
-        onLogoutAndContinue={vi.fn()}
-        onRetryStatus={vi.fn()}
+        {...props}
       />,
     );
-    expect(screen.getByRole("button", { name: "Retry status check" })).toBeVisible();
+    expect(
+      screen.getByRole("heading", { name: "Complete login in browser" }),
+    ).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Retry status check" })).toBeNull();
   });
 
   it("shows status check message and disables auth actions while checking", () => {
+    const props = commonProps();
     render(
       <LoginView
         auth={state("loginRequired")}
-        busy={false}
+        {...props}
         statusChecking
-        startupChecking={false}
-        startupCheckSlow={false}
-        onStartLogin={vi.fn()}
-        onLogoutAndContinue={vi.fn()}
-        onRetryStatus={vi.fn()}
       />,
     );
     expect(screen.getByText("Checking account status in the background...")).toBeVisible();
     expect(screen.getByRole("button", { name: "Continue with ChatGPT" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Checking..." })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Checking..." })).toBeNull();
   });
 
   it("renders startup preparation state before login-required state", () => {
+    const props = commonProps();
     render(
       <LoginView
         auth={state("loginRequired")}
-        busy={false}
-        statusChecking
+        {...props}
+        statusChecking={true}
         startupChecking
-        startupCheckSlow={false}
-        onStartLogin={vi.fn()}
-        onLogoutAndContinue={vi.fn()}
-        onRetryStatus={vi.fn()}
       />,
     );
     expect(screen.getByRole("heading", { name: "Preparing minico" })).toBeVisible();

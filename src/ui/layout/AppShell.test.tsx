@@ -173,6 +173,9 @@ describe("AppShell", () => {
     await expect(
       screen.findByRole("heading", { level: 2, name: "Login required" }),
     ).resolves.toBeVisible();
+    expect(screen.getByLabelText("CODEX_HOME")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Browse CODEX_HOME folder" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Use default CODEX_HOME" })).toBeVisible();
     expect(openUrl).not.toHaveBeenCalled();
   });
 
@@ -821,6 +824,162 @@ describe("AppShell", () => {
     });
     expect(readCount).toBeGreaterThanOrEqual(2);
     expect(openUrl).toHaveBeenCalledWith("https://example.com/auth");
+  });
+
+  it("saves CODEX_HOME before starting ChatGPT login", async () => {
+    const user = userEvent.setup();
+    mockedInvoke.mockImplementation(async (command, args) => {
+      if (command === "auth_read_status") {
+        return {
+          state: "loginRequired",
+          accountEmail: null,
+          requiresOpenaiAuth: true,
+          rawAuthMode: null,
+          message: null,
+        };
+      }
+      if (command === "session_poll_events") {
+        return [];
+      }
+      if (command === "settings_read") {
+        return {
+          configPath: "C:/Users/test/.minico/config.toml",
+          effectiveCodexHome: "C:/Users/test/.minico/codex",
+          config: {
+            schemaVersion: 1,
+            codex: {
+              path: null,
+              homePath: "~/.minico/codex",
+              personality: "friendly",
+            },
+            workspace: {
+              lastPath: "C:/Users/test/.minico/workspace",
+            },
+            diagnostics: { logLevel: "info" },
+            appearance: { theme: "light" },
+            window: {
+              placement: {
+                x: 100,
+                y: 100,
+                width: 1000,
+                height: 700,
+                maximized: false,
+                scaleFactor: null,
+              },
+            },
+          },
+        };
+      }
+      if (command === "settings_write") {
+        const nextConfig = (args as { config: { codex: { homePath: string } } }).config;
+        return {
+          configPath: "C:/Users/test/.minico/config.toml",
+          effectiveCodexHome: nextConfig.codex.homePath,
+          config: nextConfig,
+        };
+      }
+      if (command === "session_reset_runtime") {
+        return undefined;
+      }
+      if (command === "auth_login_start_chatgpt") {
+        return {
+          authUrl: "https://example.com/auth",
+          loginId: "login-1",
+        };
+      }
+      return undefined;
+    });
+
+    render(<AppShell />);
+    await screen.findByRole("heading", { level: 2, name: "Login required" });
+
+    fireEvent.change(screen.getByLabelText("CODEX_HOME"), {
+      target: { value: "C:/custom/codex-home" },
+    });
+    await user.click(screen.getByRole("button", { name: "Continue with ChatGPT" }));
+
+    await waitFor(() => {
+      expect(openUrl).toHaveBeenCalledWith("https://example.com/auth");
+    });
+
+    const settingsWriteIndex = mockedInvoke.mock.calls.findIndex(
+      ([command]) => command === "settings_write",
+    );
+    const loginStartIndex = mockedInvoke.mock.calls.findIndex(
+      ([command]) => command === "auth_login_start_chatgpt",
+    );
+    expect(settingsWriteIndex).toBeGreaterThan(-1);
+    expect(loginStartIndex).toBeGreaterThan(settingsWriteIndex);
+    expect(mockedInvoke).toHaveBeenCalledWith(
+      "settings_write",
+      expect.objectContaining({
+        config: expect.objectContaining({
+          codex: expect.objectContaining({
+            homePath: "C:/custom/codex-home",
+          }),
+        }),
+      }),
+    );
+  });
+
+  it("keeps expanded default CODEX_HOME display when pressing reset repeatedly", async () => {
+    const user = userEvent.setup();
+    mockedInvoke.mockImplementation(async (command) => {
+      if (command === "auth_read_status") {
+        return {
+          state: "loginRequired",
+          accountEmail: null,
+          requiresOpenaiAuth: true,
+          rawAuthMode: null,
+          message: null,
+        };
+      }
+      if (command === "session_poll_events") {
+        return [];
+      }
+      if (command === "settings_read") {
+        return {
+          configPath: "C:/Users/test/.minico/config.toml",
+          effectiveCodexHome: "C:/Users/test/.minico/codex",
+          config: {
+            schemaVersion: 1,
+            codex: {
+              path: null,
+              homePath: "~/.minico/codex",
+              personality: "friendly",
+            },
+            workspace: {
+              lastPath: "C:/Users/test/.minico/workspace",
+            },
+            diagnostics: { logLevel: "info" },
+            appearance: { theme: "light" },
+            window: {
+              placement: {
+                x: 100,
+                y: 100,
+                width: 1000,
+                height: 700,
+                maximized: false,
+                scaleFactor: null,
+              },
+            },
+          },
+        };
+      }
+      return undefined;
+    });
+
+    render(<AppShell />);
+    await screen.findByRole("heading", { level: 2, name: "Login required" });
+
+    const codexHomeInput = screen.getByLabelText("CODEX_HOME") as HTMLInputElement;
+    expect(codexHomeInput.value).toBe("C:/Users/test/.minico/codex");
+
+    await user.click(screen.getByRole("button", { name: "Use default CODEX_HOME" }));
+    expect(codexHomeInput.value).toBe("C:/Users/test/.minico/codex");
+
+    await user.click(screen.getByRole("button", { name: "Use default CODEX_HOME" }));
+    expect(codexHomeInput.value).toBe("C:/Users/test/.minico/codex");
   });
 
   it("keeps approval dialog queued when response and fallback both fail", async () => {

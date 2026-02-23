@@ -1144,7 +1144,21 @@ pre {
   margin: 0;
 }
 
-.login-card button {
+.login-card label {
+  font-size: 0.92rem;
+  color: var(--fg-muted);
+}
+
+.login-card input {
+  width: 100%;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-base);
+  color: var(--fg-default);
+}
+
+.login-card button:not(.icon-button) {
   justify-self: start;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
@@ -1483,7 +1497,7 @@ pre {
 .workspace-picker button:hover:not(:disabled),
 .settings-actions button:hover:not(:disabled),
 .settings-modal-close:hover:not(:disabled),
-.login-card button:hover:not(:disabled),
+.login-card button:not(.icon-button):hover:not(:disabled),
 .error-banner button:hover:not(:disabled),
 .approval-actions button:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--focus-ring) 26%, var(--border-strong));
@@ -1493,7 +1507,7 @@ pre {
 
 .icon-button-primary:hover:not(:disabled),
 .settings-actions button[type="submit"]:hover:not(:disabled),
-.login-card button:hover:not(:disabled) {
+.login-card button:not(.icon-button):hover:not(:disabled) {
   background: color-mix(in srgb, var(--bg-accent) 84%, black);
   color: var(--fg-inverse);
   border-color: color-mix(in srgb, var(--bg-accent) 68%, black);

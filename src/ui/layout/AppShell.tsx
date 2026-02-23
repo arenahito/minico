@@ -8,6 +8,7 @@ import {
   type Dispatch,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { List, Settings, X } from "lucide-react";
 
@@ -37,7 +38,7 @@ import {
   type SessionPolledEvent,
   type ThreadSummary,
 } from "../../core/chat/threadService";
-import { loadSettings } from "../../core/settings/store";
+import { loadSettings, saveSettings } from "../../core/settings/store";
 import type { AppTheme, CodexPersonality, MinicoConfig } from "../../core/settings/types";
 import {
   eventToTurnAction,
@@ -219,6 +220,31 @@ function normalizeCodexHomePath(value: string | null | undefined): string {
   return trimmed.length > 0 ? trimmed : DEFAULT_CODEX_HOME_ALIAS;
 }
 
+function resolveCodexHomeDialogDefaultPath(
+  inputValue: string,
+  effectiveCodexHome: string | null,
+): string | undefined {
+  const trimmed = inputValue.trim();
+  if (trimmed.length === 0) {
+    return effectiveCodexHome ?? DEFAULT_CODEX_HOME_ALIAS;
+  }
+  if (trimmed.startsWith("~")) {
+    return effectiveCodexHome ?? trimmed;
+  }
+  return trimmed;
+}
+
+function resolveCodexHomeInputValue(
+  configuredHomePath: string | null | undefined,
+  effectiveCodexHome: string | null,
+): string {
+  const normalized = normalizeCodexHomePath(configuredHomePath ?? "");
+  if (normalized.startsWith("~") && effectiveCodexHome) {
+    return effectiveCodexHome;
+  }
+  return normalized;
+}
+
 function resolveModelCatalog(models: ModelSummary[]): ModelSummary[] {
   const uniqueByModel = new Map<string, ModelSummary>();
   for (const model of models) {
@@ -364,6 +390,11 @@ export function AppShell() {
   const [authStatusChecking, setAuthStatusChecking] = useState(false);
   const [startupAuthCheckPending, setStartupAuthCheckPending] = useState(true);
   const [startupAuthCheckSlow, setStartupAuthCheckSlow] = useState(false);
+  const [loginCodexHomeInput, setLoginCodexHomeInput] = useState(
+    DEFAULT_CODEX_HOME_ALIAS,
+  );
+  const [loginCodexHomeEffectivePath, setLoginCodexHomeEffectivePath] =
+    useState<string | null>(null);
   const startupAuthCheckPendingRef = useRef(true);
   const appMainRef = useRef<HTMLElement | null>(null);
   const authRefreshInFlightRef = useRef(false);
@@ -387,6 +418,7 @@ export function AppShell() {
   const codexHomeSwitchInFlightRef = useRef(false);
   const codexHomeAtSettingsOpenRef = useRef<string | null>(null);
   const codexHomeLatestWhileSettingsOpenRef = useRef<string | null>(null);
+  const loginCodexHomeConfiguredRef = useRef<string>(DEFAULT_CODEX_HOME_ALIAS);
 
   const activeApproval = useMemo(
     () => currentApproval(approvalState),
@@ -807,6 +839,41 @@ export function AppShell() {
   }, [auth.view]);
 
   useEffect(() => {
+    if (auth.view === "loggedIn") {
+      return;
+    }
+
+    let cancelled = false;
+    void loadSettings()
+      .then((snapshot) => {
+        if (cancelled) {
+          return;
+        }
+        const effectiveCodexHome = snapshot?.effectiveCodexHome ?? null;
+        const configuredCodexHome = normalizeCodexHomePath(
+          snapshot?.config?.codex?.homePath,
+        );
+        loginCodexHomeConfiguredRef.current = configuredCodexHome;
+        setLoginCodexHomeEffectivePath(effectiveCodexHome);
+        setLoginCodexHomeInput(
+          resolveCodexHomeInputValue(
+            snapshot?.config?.codex?.homePath,
+            effectiveCodexHome,
+          ),
+        );
+      })
+      .catch((reason) => {
+        if (!cancelled) {
+          setError(mapErrorToUserFacing(reason));
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [auth.view]);
+
+  useEffect(() => {
     if (auth.view !== "loggedIn") {
       persistedModelPreferenceRef.current = null;
       modelPreferenceReadyRef.current = false;
@@ -1182,6 +1249,13 @@ export function AppShell() {
   async function handleStartLogin(): Promise<void> {
     setBusy(true);
     try {
+      const codexHomeSaved = await persistLoginCodexHome(loginCodexHomeInput, {
+        manageBusy: false,
+        resetRuntimeOnChange: true,
+      });
+      if (!codexHomeSaved) {
+        return;
+      }
       const login = await startChatgptLogin();
       setAuth((current) =>
         reduceAuthMachine(current, {
@@ -1251,13 +1325,6 @@ export function AppShell() {
     }
   }
 
-  function handleRetryStatusCheck(): void {
-    if (authRefreshInFlightRef.current) {
-      return;
-    }
-    setAuthRefreshKey((current) => current + 1);
-  }
-
   function updateCodexHomeChangedState(): void {
     const base = codexHomeAtSettingsOpenRef.current;
     const latest = codexHomeLatestWhileSettingsOpenRef.current;
@@ -1320,6 +1387,119 @@ export function AppShell() {
       setBusy(false);
       codexHomeSwitchInFlightRef.current = false;
     }
+  }
+
+  async function persistLoginCodexHome(
+    nextInputValue: string,
+    options?: {
+      manageBusy?: boolean;
+      resetRuntimeOnChange?: boolean;
+    },
+  ): Promise<boolean> {
+    const manageBusy = options?.manageBusy ?? true;
+    const resetRuntimeOnChange = options?.resetRuntimeOnChange ?? true;
+    const normalizedNextCodexHome = normalizeCodexHomePath(nextInputValue);
+    if (normalizedNextCodexHome === loginCodexHomeConfiguredRef.current) {
+      return true;
+    }
+
+    if (manageBusy) {
+      setBusy(true);
+    }
+    try {
+      const snapshot = await loadSettings();
+      const currentConfig = snapshot.config;
+      const currentEffectiveCodexHome = snapshot.effectiveCodexHome ?? null;
+      const currentConfiguredCodexHome = normalizeCodexHomePath(
+        currentConfig.codex.homePath,
+      );
+      loginCodexHomeConfiguredRef.current = currentConfiguredCodexHome;
+      setLoginCodexHomeEffectivePath(currentEffectiveCodexHome);
+      if (normalizedNextCodexHome === currentConfiguredCodexHome) {
+        setLoginCodexHomeInput(
+          resolveCodexHomeInputValue(
+            currentConfig.codex.homePath,
+            currentEffectiveCodexHome,
+          ),
+        );
+        return true;
+      }
+
+      const updated = await saveSettings({
+        ...currentConfig,
+        codex: {
+          ...currentConfig.codex,
+          homePath: normalizedNextCodexHome,
+        },
+      });
+      const updatedEffectiveCodexHome = updated.effectiveCodexHome ?? null;
+      const updatedConfiguredCodexHome = normalizeCodexHomePath(
+        updated.config.codex.homePath,
+      );
+      loginCodexHomeConfiguredRef.current = updatedConfiguredCodexHome;
+      setLoginCodexHomeEffectivePath(updatedEffectiveCodexHome);
+      setLoginCodexHomeInput(
+        resolveCodexHomeInputValue(
+          updated.config.codex.homePath,
+          updatedEffectiveCodexHome,
+        ),
+      );
+      const effectiveChanged =
+        currentEffectiveCodexHome === null
+          ? updatedEffectiveCodexHome !== null
+          : updatedEffectiveCodexHome === null
+            ? true
+            : !pathsEqual(currentEffectiveCodexHome, updatedEffectiveCodexHome);
+      if (effectiveChanged && resetRuntimeOnChange) {
+        await resetSessionRuntime();
+      }
+      return true;
+    } catch (reason) {
+      setError(mapErrorToUserFacing(reason));
+      return false;
+    } finally {
+      if (manageBusy) {
+        setBusy(false);
+      }
+    }
+  }
+
+  function handleLoginCodexHomeBlur(): void {
+    void persistLoginCodexHome(loginCodexHomeInput);
+  }
+
+  async function handlePickLoginCodexHomeFolder(): Promise<void> {
+    const defaultPath = resolveCodexHomeDialogDefaultPath(
+      loginCodexHomeInput,
+      loginCodexHomeEffectivePath,
+    );
+    try {
+      const picked = await open({
+        directory: true,
+        multiple: false,
+        defaultPath,
+      });
+      if (!picked) {
+        return;
+      }
+      const selectedPath = Array.isArray(picked) ? picked[0] : picked;
+      if (typeof selectedPath !== "string") {
+        return;
+      }
+      const normalizedPath = selectedPath.trim();
+      if (normalizedPath.length === 0) {
+        return;
+      }
+      setLoginCodexHomeInput(normalizedPath);
+      await persistLoginCodexHome(normalizedPath);
+    } catch (reason) {
+      setError(mapErrorToUserFacing(reason));
+    }
+  }
+
+  function handleResetLoginCodexHomeDefault(): void {
+    const nextCodexHome = DEFAULT_CODEX_HOME_ALIAS;
+    void persistLoginCodexHome(nextCodexHome);
   }
 
   function persistThreadPanelWidthIfChanged(width: number): void {
@@ -1627,9 +1807,13 @@ export function AppShell() {
             statusChecking={authStatusChecking}
             startupChecking={startupAuthCheckPending && authStatusChecking}
             startupCheckSlow={startupAuthCheckPending && startupAuthCheckSlow}
+            codexHomeInput={loginCodexHomeInput}
+            onCodexHomeInputChange={setLoginCodexHomeInput}
+            onCodexHomeBlur={handleLoginCodexHomeBlur}
+            onPickCodexHomeFolder={() => void handlePickLoginCodexHomeFolder()}
+            onResetCodexHomeDefault={handleResetLoginCodexHomeDefault}
             onStartLogin={() => void handleStartLogin()}
             onLogoutAndContinue={() => void handleLogoutAndContinue()}
-            onRetryStatus={handleRetryStatusCheck}
           />
         </main>
       )}
