@@ -488,7 +488,7 @@ pre {
   content: "";
   position: absolute;
   right: -7px;
-  bottom: 10px;
+  top: 12px;
   width: 0;
   height: 0;
   border-top: 8px solid transparent;
@@ -499,15 +499,14 @@ pre {
 .chat-item-agent {
   align-self: flex-start;
   background: var(--surface-base);
-  margin-left: 10px;
+  margin-left: 48px;
 }
 
 .chat-item-agent::before {
   content: "";
   position: absolute;
   left: -10px;
-  top: 50%;
-  transform: translateY(-50%);
+  top: 12px;
   width: 0;
   height: 0;
   border-top: 9px solid transparent;
@@ -519,13 +518,24 @@ pre {
   content: "";
   position: absolute;
   left: -8px;
-  top: 50%;
-  transform: translateY(-50%);
+  top: 13px;
   width: 0;
   height: 0;
   border-top: 8px solid transparent;
   border-bottom: 8px solid transparent;
   border-right: 9px solid var(--surface-base);
+}
+
+.chat-agent-avatar {
+  position: absolute;
+  left: -42px;
+  top: 6px;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid var(--border-default);
+  object-fit: cover;
+  background: var(--surface-base);
 }
 
 .chat-item-body {

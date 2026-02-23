@@ -567,7 +567,7 @@ export function ChatView({
         <div className="chat-pane-loading" role="status" aria-live="polite">
           <img
             className="chat-pane-loading-image"
-            src="/tauri.svg"
+            src="/minico-org.png"
             alt="Loading selected thread"
           />
           <p className="chat-pane-loading-text">Loading selected thread...</p>
@@ -632,9 +632,12 @@ export function ChatView({
                       ) : null}
                     </div>
                   ) : (
-                    <div className="chat-item-body chat-item-markdown">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.text || "..."}</ReactMarkdown>
-                    </div>
+                    <>
+                      <img className="chat-agent-avatar" src="/minico-org.png" alt="minico" />
+                      <div className="chat-item-body chat-item-markdown">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.text || "..."}</ReactMarkdown>
+                      </div>
+                    </>
                   )}
                   {!item.completed ? (
                     <footer className="chat-item-meta">
@@ -649,6 +652,7 @@ export function ChatView({
                 className="chat-item chat-item-agent chat-item-typing"
                 aria-label="minico thinking indicator"
               >
+                <img className="chat-agent-avatar" src="/minico-org.png" alt="minico" />
                 <div className="typing-dots" aria-hidden="true">
                   <span />
                   <span />
