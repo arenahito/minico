@@ -14,6 +14,7 @@ dist-ssr
 coverage
 src-tauri/target
 .tmp
+.tasks/
 
 # Editor directories and files
 .vscode/*
