@@ -15,8 +15,8 @@ pub fn config_file_path() -> Result<PathBuf, ConfigError> {
     Ok(config_file_path_from_home(&home_dir()?))
 }
 
-pub fn isolated_codex_home_path() -> Result<PathBuf, ConfigError> {
-    Ok(isolated_codex_home_path_from_home(&home_dir()?))
+pub fn default_codex_home_path() -> Result<PathBuf, ConfigError> {
+    Ok(default_codex_home_path_from_home(&home_dir()?))
 }
 
 pub fn default_workspace_path() -> Result<PathBuf, ConfigError> {
@@ -31,8 +31,8 @@ pub fn config_file_path_from_home(home: &Path) -> PathBuf {
     minico_dir_from_home(home).join("config.json")
 }
 
-pub fn isolated_codex_home_path_from_home(home: &Path) -> PathBuf {
-    minico_dir_from_home(home).join("codex")
+pub fn default_codex_home_path_from_home(home: &Path) -> PathBuf {
+    home.join(".codex")
 }
 
 pub fn default_workspace_path_from_home(home: &Path) -> PathBuf {
@@ -44,8 +44,8 @@ mod tests {
     use std::path::Path;
 
     use super::{
-        config_file_path_from_home, default_workspace_path_from_home,
-        isolated_codex_home_path_from_home, minico_dir_from_home,
+        config_file_path_from_home, default_codex_home_path_from_home, default_workspace_path_from_home,
+        minico_dir_from_home,
     };
 
     #[test]
@@ -57,8 +57,8 @@ mod tests {
             Path::new("/tmp/demo/.minico/config.json")
         );
         assert_eq!(
-            isolated_codex_home_path_from_home(home),
-            Path::new("/tmp/demo/.minico/codex")
+            default_codex_home_path_from_home(home),
+            Path::new("/tmp/demo/.codex")
         );
         assert_eq!(
             default_workspace_path_from_home(home),

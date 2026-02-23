@@ -123,6 +123,28 @@ pre {
   }
 }
 
+@keyframes settings-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes settings-toast-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
 @property --thread-panel-open-ratio {
   syntax: "<number>";
   inherits: false;
@@ -963,9 +985,82 @@ pre {
   padding: var(--space-2) var(--space-3);
 }
 
+.settings-inline-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.settings-inline-row select {
+  min-width: 0;
+  flex: 1;
+}
+
+.settings-inline-action {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.codex-home-input-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.codex-home-input-row input {
+  min-width: 0;
+  flex: 1;
+}
+
+.codex-home-action {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
 .workspace-picker {
   display: grid;
   gap: var(--space-2);
+}
+
+.workspace-picker-input-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.workspace-picker-input-row input {
+  min-width: 0;
+  flex: 1;
+}
+
+.workspace-picker-browse {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.workspace-picker-use-default {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .workspace-picker button {
@@ -1022,7 +1117,7 @@ pre {
 }
 
 .settings-modal {
-  width: min(960px, 100%);
+  width: min(600px, 100%);
   max-height: 92vh;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-lg);
@@ -1059,7 +1154,7 @@ pre {
 .settings-modal-body {
   min-height: 0;
   overflow: auto;
-  padding-right: var(--space-1);
+  padding-inline: var(--space-1);
   padding-top: 0;
 }
 
@@ -1080,6 +1175,26 @@ pre {
 
 .form-warning {
   color: var(--warning);
+}
+
+.settings-toast {
+  position: fixed;
+  right: var(--space-5);
+  bottom: var(--space-5);
+  max-width: min(560px, calc(100vw - (var(--space-5) * 2)));
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel-2);
+  color: var(--fg-default);
+  padding: var(--space-2) var(--space-3);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+  z-index: 40;
+  transform-origin: bottom right;
+  animation: settings-toast-in 220ms ease;
+}
+
+.settings-toast.is-closing {
+  animation: settings-toast-out 220ms ease forwards;
 }
 
 .approval-overlay {

@@ -15,7 +15,7 @@ export interface MinicoConfig {
   schemaVersion: number;
   codex: {
     path: string | null;
-    homeIsolation: boolean;
+    homePath: string | null;
     personality: CodexPersonality;
   };
   workspace: {

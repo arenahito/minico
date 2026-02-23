@@ -8,6 +8,8 @@ use thiserror::Error;
 use super::paths;
 use super::session_runtime::run_blocking_task;
 
+const DEFAULT_CODEX_HOME_ALIAS: &str = "~/.codex";
+
 #[derive(Debug, Error)]
 pub enum ConfigError {
     #[error("Home directory could not be resolved")]
@@ -48,7 +50,7 @@ pub struct MinicoConfig {
 #[serde(rename_all = "camelCase")]
 pub struct CodexConfig {
     pub path: Option<String>,
-    pub home_isolation: bool,
+    pub home_path: Option<String>,
     #[serde(default = "default_codex_personality")]
     pub personality: String,
     #[serde(flatten)]
@@ -163,7 +165,7 @@ impl Default for CodexConfig {
     fn default() -> Self {
         Self {
             path: None,
-            home_isolation: false,
+            home_path: Some(DEFAULT_CODEX_HOME_ALIAS.to_string()),
             personality: default_codex_personality(),
             extra: HashMap::new(),
         }
@@ -208,17 +210,22 @@ pub fn load_or_default(config_path: &Path) -> Result<MinicoConfig, ConfigError> 
     }
 
     let raw = fs::read_to_string(config_path).map_err(ConfigError::ReadConfig)?;
-    let parsed = serde_json::from_str::<MinicoConfig>(&raw).map_err(ConfigError::Parse)?;
+    let mut parsed = serde_json::from_str::<MinicoConfig>(&raw).map_err(ConfigError::Parse)?;
+    normalize_codex_home_path(&mut parsed);
     Ok(parsed)
 }
 
 pub fn save(config_path: &Path, config: &MinicoConfig) -> Result<(), ConfigError> {
     validate_codex_path(config.codex.path.as_deref())?;
-    write_config(config_path, config)
+    let mut normalized = config.clone();
+    normalize_codex_home_path(&mut normalized);
+    write_config(config_path, &normalized)
 }
 
 pub fn save_system_update(config_path: &Path, config: &MinicoConfig) -> Result<(), ConfigError> {
-    write_config(config_path, config)
+    let mut normalized = config.clone();
+    normalize_codex_home_path(&mut normalized);
+    write_config(config_path, &normalized)
 }
 
 fn write_config(config_path: &Path, config: &MinicoConfig) -> Result<(), ConfigError> {
@@ -226,13 +233,48 @@ fn write_config(config_path: &Path, config: &MinicoConfig) -> Result<(), ConfigE
         fs::create_dir_all(parent).map_err(ConfigError::WriteConfig)?;
     }
 
-    if config.codex.home_isolation {
-        fs::create_dir_all(paths::isolated_codex_home_path()?).map_err(ConfigError::WriteConfig)?;
-    }
+    fs::create_dir_all(resolved_codex_home_path(config)?).map_err(ConfigError::WriteConfig)?;
 
     let serialized = serde_json::to_string_pretty(config).map_err(ConfigError::Parse)?;
     fs::write(config_path, serialized).map_err(ConfigError::WriteConfig)?;
     Ok(())
+}
+
+fn normalize_codex_home_path(config: &mut MinicoConfig) {
+    let normalized = config
+        .codex
+        .home_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(DEFAULT_CODEX_HOME_ALIAS);
+    config.codex.home_path = Some(normalized.to_string());
+}
+
+fn resolve_configured_codex_home_path(raw: &str) -> Result<PathBuf, ConfigError> {
+    if raw == "~" {
+        return paths::home_dir();
+    }
+    if let Some(suffix) = raw
+        .strip_prefix("~/")
+        .or_else(|| raw.strip_prefix("~\\"))
+    {
+        return Ok(paths::home_dir()?.join(suffix));
+    }
+    Ok(PathBuf::from(raw))
+}
+
+fn resolved_codex_home_path(config: &MinicoConfig) -> Result<PathBuf, ConfigError> {
+    let configured_path = config
+        .codex
+        .home_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    if let Some(path) = configured_path {
+        return resolve_configured_codex_home_path(path);
+    }
+    paths::default_codex_home_path()
 }
 
 pub fn validate_codex_path(path: Option<&str>) -> Result<(), ConfigError> {
@@ -283,10 +325,7 @@ pub fn validate_codex_path(path: Option<&str>) -> Result<(), ConfigError> {
 }
 
 pub fn effective_codex_home(config: &MinicoConfig) -> Result<Option<String>, ConfigError> {
-    if !config.codex.home_isolation {
-        return Ok(None);
-    }
-    let path = paths::isolated_codex_home_path()?;
+    let path = resolved_codex_home_path(config)?;
     Ok(Some(path.display().to_string()))
 }
 
@@ -349,7 +388,7 @@ mod tests {
         let config = MinicoConfig::default();
         assert_eq!(config.schema_version, 1);
         assert_eq!(config.codex.path, None);
-        assert!(!config.codex.home_isolation);
+        assert_eq!(config.codex.home_path.as_deref(), Some("~/.codex"));
         assert_eq!(config.codex.personality, "friendly");
         assert_eq!(config.workspace.last_path, None);
         assert_eq!(config.diagnostics.log_level, LogLevel::Info);
@@ -365,7 +404,7 @@ mod tests {
         let raw = r#"
         {
             "schemaVersion": 1,
-            "codex": { "path": null, "homeIsolation": false, "futureKey": true },
+            "codex": { "path": null, "homePath": null, "futureKey": true },
             "workspace": { "lastPath": null },
             "diagnostics": { "logLevel": "debug" },
             "window": { "placement": { "x": 1, "y": 2, "width": 640, "height": 480, "maximized": false } },
@@ -373,6 +412,7 @@ mod tests {
         }
         "#;
         let parsed: MinicoConfig = serde_json::from_str(raw).expect("parse should succeed");
+        assert_eq!(parsed.codex.home_path, None);
         assert_eq!(
             parsed.extra.get("unknownRoot"),
             Some(&serde_json::Value::String(
@@ -449,15 +489,38 @@ mod tests {
     }
 
     #[test]
-    fn effective_codex_home_respects_home_isolation_flag() {
+    fn effective_codex_home_uses_default_or_custom_path() {
         let config = MinicoConfig::default();
-        let disabled = effective_codex_home(&config).expect("value when disabled");
-        assert_eq!(disabled, None);
+        let default_home = effective_codex_home(&config).expect("value when defaulting");
+        assert!(default_home.is_some());
+        let default_path = default_home.expect("default codex home path");
+        assert!(default_path.ends_with(".codex"));
 
-        let mut enabled_config = config;
-        enabled_config.codex.home_isolation = true;
-        let enabled = effective_codex_home(&enabled_config).expect("value when enabled");
-        assert!(enabled.is_some());
+        let mut custom_config = config;
+        custom_config.codex.home_path = Some("C:/custom/codex-home".to_string());
+        let custom = effective_codex_home(&custom_config).expect("value when custom");
+        assert_eq!(custom.as_deref(), Some("C:/custom/codex-home"));
+    }
+
+    #[test]
+    fn load_normalizes_null_codex_home_to_default_alias() {
+        let temp = TempDir::new().expect("temp dir");
+        let config_path = temp.path().join("config.json");
+        fs::write(
+            &config_path,
+            r#"{
+                "schemaVersion": 1,
+                "codex": { "path": null, "homePath": null, "personality": "friendly" },
+                "workspace": { "lastPath": null },
+                "diagnostics": { "logLevel": "info" },
+                "appearance": { "theme": "light" },
+                "window": { "placement": { "x": 0, "y": 0, "width": 980, "height": 720, "maximized": false } }
+            }"#,
+        )
+        .expect("write config");
+
+        let loaded = load_or_default(&config_path).expect("load should work");
+        assert_eq!(loaded.codex.home_path.as_deref(), Some("~/.codex"));
     }
 
     #[test]
