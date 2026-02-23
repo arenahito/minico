@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ComponentPropsWithoutRef,
   type ReactNode,
   type DragEvent as ReactDragEvent,
 } from "react";
@@ -14,7 +15,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { open } from "@tauri-apps/plugin-dialog";
 import type { TurnStreamItem, TurnStreamState } from "../../core/chat/turnReducer";
-import { ArrowDown, ChevronDown, FolderOpen, ListPlus, Paperclip, Send, Square, X } from "lucide-react";
+import { ArrowDown, Check, ChevronDown, Copy, FolderOpen, ListPlus, Paperclip, Send, Square, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
@@ -67,6 +68,53 @@ interface ParsedMessageAttachment {
 const USER_ATTACHMENT_TOKEN_PREFIX_RE = /^\[@([^\]]+)\]\((file:\/\/[^\s)]+)\)\s*/i;
 const STREAM_BOTTOM_THRESHOLD_PX = 16;
 const URL_LITERAL_RE = /https?:\/\/[^\s]+/g;
+type MermaidRuntime = {
+  initialize: (config: {
+    startOnLoad: boolean;
+    securityLevel: "strict";
+    theme: "default" | "dark";
+    suppressErrorRendering: boolean;
+  }) => void;
+  render: (
+    id: string,
+    text: string,
+  ) => Promise<{ svg: string; bindFunctions?: (element: Element) => void }>;
+};
+
+type MermaidImporter = () => Promise<{ default: MermaidRuntime }>;
+const defaultMermaidImporter: MermaidImporter = () => import("mermaid");
+
+let mermaidRuntime: MermaidRuntime | null = null;
+let mermaidLoader: Promise<MermaidRuntime> | null = null;
+let mermaidImporter: MermaidImporter = defaultMermaidImporter;
+
+async function loadMermaid() {
+  if (mermaidRuntime) {
+    return mermaidRuntime;
+  }
+
+  if (!mermaidLoader) {
+    mermaidLoader = mermaidImporter()
+      .then((module) => {
+        mermaidRuntime = module.default;
+        return mermaidRuntime;
+      })
+      .catch((error) => {
+        mermaidLoader = null;
+        throw error;
+      });
+  }
+
+  return mermaidLoader;
+}
+
+export const __chatViewTestOnly = {
+  setMermaidImporter(importer: MermaidImporter | null) {
+    mermaidImporter = importer ?? defaultMermaidImporter;
+    mermaidRuntime = null;
+    mermaidLoader = null;
+  },
+};
 
 function isStreamAtBottom(element: HTMLElement): boolean {
   const distanceToBottom = element.scrollHeight - element.scrollTop - element.clientHeight;
@@ -171,7 +219,363 @@ function renderCodeChildrenWithAutoLinks(children: ReactNode, keyPrefix: string)
   );
 }
 
+function collectTextFromHastNode(node: unknown): string {
+  if (node == null) {
+    return "";
+  }
+
+  if (typeof node === "string" || typeof node === "number") {
+    return String(node);
+  }
+
+  if (typeof node !== "object") {
+    return "";
+  }
+
+  const candidate = node as {
+    value?: unknown;
+    children?: unknown[];
+  };
+
+  if (typeof candidate.value === "string") {
+    return candidate.value;
+  }
+
+  if (!Array.isArray(candidate.children)) {
+    return "";
+  }
+
+  return candidate.children.map((child) => collectTextFromHastNode(child)).join("");
+}
+
+function resolveMermaidSource(node: unknown): string | null {
+  if (node == null || typeof node !== "object") {
+    return null;
+  }
+
+  const preNode = node as {
+    children?: Array<{
+      tagName?: unknown;
+      properties?: { className?: unknown };
+      children?: unknown[];
+    }>;
+  };
+
+  const codeNode = preNode.children?.find((child) => child?.tagName === "code");
+  if (!codeNode) {
+    return null;
+  }
+
+  const classNameValue = codeNode.properties?.className;
+  const className = Array.isArray(classNameValue)
+    ? classNameValue.map((entry) => String(entry)).join(" ")
+    : typeof classNameValue === "string"
+      ? classNameValue
+      : "";
+
+  if (!/\blanguage-mermaid\b/i.test(className)) {
+    return null;
+  }
+
+  return collectTextFromHastNode(codeNode).trim();
+}
+
+interface PreCodeNodeInfo {
+  className: string;
+  source: string;
+}
+
+function resolvePreCodeNodeInfo(node: unknown): PreCodeNodeInfo | null {
+  if (node == null || typeof node !== "object") {
+    return null;
+  }
+
+  const preNode = node as {
+    children?: Array<{
+      tagName?: unknown;
+      properties?: { className?: unknown };
+      children?: unknown[];
+    }>;
+  };
+
+  const codeNode = preNode.children?.find((child) => child?.tagName === "code");
+  if (!codeNode) {
+    return null;
+  }
+
+  const classNameValue = codeNode.properties?.className;
+  const className = Array.isArray(classNameValue)
+    ? classNameValue.map((entry) => String(entry)).join(" ")
+    : typeof classNameValue === "string"
+      ? classNameValue
+      : "";
+
+  return {
+    className,
+    source: collectTextFromHastNode(codeNode),
+  };
+}
+
+function normalizeCodeBlockSource(source: string): string {
+  const normalizedLineEndings = source.replace(/\r\n/g, "\n");
+  return normalizedLineEndings.replace(/\n$/, "");
+}
+
+function isMultilineCodeBlock(source: string): boolean {
+  return normalizeCodeBlockSource(source).includes("\n");
+}
+
+async function copyTextToClipboard(text: string): Promise<void> {
+  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  if (typeof document === "undefined") {
+    throw new Error("Clipboard API is unavailable.");
+  }
+
+  const element = document.createElement("textarea");
+  element.value = text;
+  element.setAttribute("readonly", "true");
+  element.style.position = "fixed";
+  element.style.opacity = "0";
+  document.body.appendChild(element);
+  element.select();
+  const copied = document.execCommand("copy");
+  document.body.removeChild(element);
+  if (!copied) {
+    throw new Error("Failed to copy text.");
+  }
+}
+
+function readMermaidTheme(): "default" | "dark" {
+  if (typeof document === "undefined") {
+    return "default";
+  }
+  return document.documentElement.dataset.theme === "dark" ? "dark" : "default";
+}
+
+function MermaidDiagram({ source }: { source: string }) {
+  const [svg, setSvg] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [theme, setTheme] = useState<"default" | "dark">(() => readMermaidTheme());
+  const diagramId = useMemo(() => `minico-mermaid-${Math.random().toString(36).slice(2)}`, []);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const bindFunctionsRef = useRef<((element: Element) => void) | null>(null);
+  const resetTimerRef = useRef<number | null>(null);
+  const showCopyButton = source.length > 0 && isMultilineCodeBlock(source);
+
+  useEffect(() => {
+    if (typeof document === "undefined" || typeof MutationObserver === "undefined") {
+      return;
+    }
+    const root = document.documentElement;
+    const observer = new MutationObserver(() => {
+      setTheme(readMermaidTheme());
+    });
+    observer.observe(root, {
+      attributes: true,
+      attributeFilter: ["data-theme"],
+    });
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    bindFunctionsRef.current = null;
+    if (source.length === 0) {
+      setSvg(null);
+      setErrorMessage("Mermaid diagram is empty.");
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const renderDiagram = async () => {
+      try {
+        const mermaid = await loadMermaid();
+        if (cancelled) {
+          return;
+        }
+        mermaid.initialize({
+          startOnLoad: false,
+          securityLevel: "strict",
+          theme,
+          suppressErrorRendering: true,
+        });
+        const renderId = `${diagramId}-${Date.now()}`;
+        const { svg: renderedSvg, bindFunctions } = await mermaid.render(renderId, source);
+        if (cancelled) {
+          return;
+        }
+        bindFunctionsRef.current = typeof bindFunctions === "function" ? bindFunctions : null;
+        setSvg(renderedSvg);
+        setErrorMessage(null);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+        setSvg(null);
+        bindFunctionsRef.current = null;
+        setErrorMessage(error instanceof Error ? error.message : "Failed to render Mermaid diagram.");
+      }
+    };
+
+    void renderDiagram();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [diagramId, source, theme]);
+
+  useEffect(() => {
+    if (!svg || !containerRef.current || !bindFunctionsRef.current) {
+      return;
+    }
+    bindFunctionsRef.current(containerRef.current);
+  }, [svg]);
+
+  useEffect(() => {
+    return () => {
+      if (resetTimerRef.current !== null) {
+        window.clearTimeout(resetTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleCopy = useCallback(async () => {
+    if (!showCopyButton) {
+      return;
+    }
+    try {
+      await copyTextToClipboard(source);
+      setCopied(true);
+      if (resetTimerRef.current !== null) {
+        window.clearTimeout(resetTimerRef.current);
+      }
+      resetTimerRef.current = window.setTimeout(() => {
+        setCopied(false);
+        resetTimerRef.current = null;
+      }, 1200);
+    } catch {
+      setCopied(false);
+    }
+  }, [showCopyButton, source]);
+
+  return (
+    <div className={`chat-code-block-wrap chat-mermaid-wrap${showCopyButton ? " has-copy" : ""}`}>
+      {showCopyButton ? (
+        <button
+          type="button"
+          className="chat-code-copy-button"
+          onClick={() => void handleCopy()}
+          aria-label={copied ? "Code copied" : "Copy code block"}
+          title={copied ? "Code copied" : "Copy code"}
+        >
+          {copied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
+          <span>{copied ? "Copied" : "Copy"}</span>
+        </button>
+      ) : null}
+      {errorMessage ? (
+        <div className="chat-mermaid chat-mermaid-error" role="status">
+          <p className="chat-mermaid-error-label">Failed to render Mermaid diagram.</p>
+          <pre className="chat-mermaid-error-source">
+            <code>{source}</code>
+          </pre>
+        </div>
+      ) : (
+        <div className="chat-mermaid" role="img" aria-label="Mermaid diagram">
+          {svg ? (
+            <div
+              ref={containerRef}
+              className="chat-mermaid-svg"
+              dangerouslySetInnerHTML={{ __html: svg }}
+            />
+          ) : (
+            <p className="chat-mermaid-loading">Rendering diagram...</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CopyableCodeBlock({
+  children,
+  node,
+  preProps,
+}: {
+  children: ReactNode;
+  node: unknown;
+  preProps: ComponentPropsWithoutRef<"pre">;
+}) {
+  const [copied, setCopied] = useState(false);
+  const resetTimerRef = useRef<number | null>(null);
+  const codeInfo = useMemo(() => resolvePreCodeNodeInfo(node), [node]);
+  const source = useMemo(
+    () => normalizeCodeBlockSource(codeInfo?.source ?? ""),
+    [codeInfo?.source],
+  );
+  const showCopyButton = source.length > 0 && isMultilineCodeBlock(source);
+
+  useEffect(() => {
+    return () => {
+      if (resetTimerRef.current !== null) {
+        window.clearTimeout(resetTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleCopy = useCallback(async () => {
+    if (!showCopyButton) {
+      return;
+    }
+    try {
+      await copyTextToClipboard(source);
+      setCopied(true);
+      if (resetTimerRef.current !== null) {
+        window.clearTimeout(resetTimerRef.current);
+      }
+      resetTimerRef.current = window.setTimeout(() => {
+        setCopied(false);
+        resetTimerRef.current = null;
+      }, 1200);
+    } catch {
+      setCopied(false);
+    }
+  }, [showCopyButton, source]);
+
+  return (
+    <div className={`chat-code-block-wrap${showCopyButton ? " has-copy" : ""}`}>
+      {showCopyButton ? (
+        <button
+          type="button"
+          className="chat-code-copy-button"
+          onClick={() => void handleCopy()}
+          aria-label={copied ? "Code copied" : "Copy code block"}
+          title={copied ? "Code copied" : "Copy code"}
+        >
+          {copied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
+          <span>{copied ? "Copied" : "Copy"}</span>
+        </button>
+      ) : null}
+      <pre {...preProps}>{children}</pre>
+    </div>
+  );
+}
+
 const markdownComponents: Components = {
+  pre({ children, node, ...props }) {
+    const mermaidSource = resolveMermaidSource(node);
+    if (mermaidSource !== null) {
+      return <MermaidDiagram source={mermaidSource} />;
+    }
+    return <CopyableCodeBlock children={children} node={node} preProps={props} />;
+  },
   code({ children, className, node: _node, ...props }) {
     const childNodes = Children.toArray(children);
     const plainTextOnly = childNodes.every(

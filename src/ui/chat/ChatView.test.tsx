@@ -1,10 +1,14 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ChatView } from "./ChatView";
+import { __chatViewTestOnly, ChatView } from "./ChatView";
 import type { TurnStreamItem, TurnStreamState } from "../../core/chat/turnReducer";
 
 const openMock = vi.fn();
 const convertFileSrcMock = vi.fn();
+const mermaidInitializeMock = vi.fn();
+const mermaidRenderMock = vi.fn();
+const mermaidImportMock = vi.fn();
+const clipboardWriteTextMock = vi.fn();
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({
   open: (...args: unknown[]) => openMock(...args),
@@ -77,15 +81,37 @@ function setChatStreamMetrics(
 }
 
 afterEach(() => {
+  __chatViewTestOnly.setMermaidImporter(null);
   cleanup();
 });
 
 beforeEach(() => {
   openMock.mockReset();
   convertFileSrcMock.mockReset();
+  mermaidInitializeMock.mockReset();
+  mermaidRenderMock.mockReset();
+  mermaidImportMock.mockReset();
+  clipboardWriteTextMock.mockReset();
   convertFileSrcMock.mockImplementation(
     (filePath: string) => `asset://localhost/${encodeURIComponent(filePath)}`,
   );
+  mermaidRenderMock.mockResolvedValue({
+    svg: "<svg><g><text>diagram</text></g></svg>",
+  });
+  mermaidImportMock.mockResolvedValue({
+    default: {
+      initialize: (...args: unknown[]) => mermaidInitializeMock(...args),
+      render: (...args: unknown[]) => mermaidRenderMock(...args),
+    },
+  });
+  __chatViewTestOnly.setMermaidImporter(() => mermaidImportMock());
+  clipboardWriteTextMock.mockResolvedValue(undefined);
+  Object.defineProperty(window.navigator, "clipboard", {
+    configurable: true,
+    value: {
+      writeText: (...args: unknown[]) => clipboardWriteTextMock(...args),
+    },
+  });
 });
 
 describe("ChatView", () => {
@@ -279,6 +305,333 @@ describe("ChatView", () => {
     const codeElement = container.querySelector("pre code.hljs.language-ts");
     expect(codeElement).not.toBeNull();
     expect(codeElement?.textContent).toContain("const value = 42;");
+  });
+
+  it("does not load mermaid runtime when message has no mermaid block", () => {
+    render(
+      <ChatView
+        turnState={turnState(null)}
+        items={[
+          item({
+            id: "item-agent-no-mermaid",
+            role: "agent",
+            itemType: "agentMessage",
+            text: "```ts\nconst value = 42;\n```",
+          }),
+        ]}
+        threadLoading={false}
+        threadCwd="C:/workspace/demo"
+        composerValue=""
+        selectorLabel="Select model"
+        selectorDisplay="gpt-5 / medium"
+        selectorOptions={[{ value: "gpt-5", label: "gpt-5" }]}
+        selectorValue="gpt-5"
+        busy={false}
+        onComposerChange={vi.fn()}
+        onSelectorChange={vi.fn(() => true)}
+        onCreateThread={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+        onInterrupt={vi.fn()}
+      />,
+    );
+
+    expect(mermaidImportMock).not.toHaveBeenCalled();
+    expect(mermaidInitializeMock).not.toHaveBeenCalled();
+    expect(mermaidRenderMock).not.toHaveBeenCalled();
+  });
+
+  it("shows copy button for multi-line code block and copies code text", async () => {
+    render(
+      <ChatView
+        turnState={turnState(null)}
+        items={[
+          item({
+            id: "item-agent-copy-multiline",
+            role: "agent",
+            itemType: "agentMessage",
+            text: "```ts\nconst value = 42;\nconst next = value + 1;\n```",
+          }),
+        ]}
+        threadLoading={false}
+        threadCwd="C:/workspace/demo"
+        composerValue=""
+        selectorLabel="Select model"
+        selectorDisplay="gpt-5 / medium"
+        selectorOptions={[{ value: "gpt-5", label: "gpt-5" }]}
+        selectorValue="gpt-5"
+        busy={false}
+        onComposerChange={vi.fn()}
+        onSelectorChange={vi.fn(() => true)}
+        onCreateThread={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+        onInterrupt={vi.fn()}
+      />,
+    );
+
+    const copyButton = screen.getByRole("button", { name: "Copy code block" });
+    fireEvent.click(copyButton);
+    await waitFor(() => {
+      expect(clipboardWriteTextMock).toHaveBeenCalledWith("const value = 42;\nconst next = value + 1;");
+    });
+    expect(screen.getByRole("button", { name: "Code copied" })).toBeVisible();
+  });
+
+  it("does not show copy button for single-line code block", () => {
+    render(
+      <ChatView
+        turnState={turnState(null)}
+        items={[
+          item({
+            id: "item-agent-copy-singleline",
+            role: "agent",
+            itemType: "agentMessage",
+            text: "```ts\nconst value = 42;\n```",
+          }),
+        ]}
+        threadLoading={false}
+        threadCwd="C:/workspace/demo"
+        composerValue=""
+        selectorLabel="Select model"
+        selectorDisplay="gpt-5 / medium"
+        selectorOptions={[{ value: "gpt-5", label: "gpt-5" }]}
+        selectorValue="gpt-5"
+        busy={false}
+        onComposerChange={vi.fn()}
+        onSelectorChange={vi.fn(() => true)}
+        onCreateThread={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+        onInterrupt={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Copy code block" })).toBeNull();
+  });
+
+  it("renders mermaid fenced code block as a diagram", async () => {
+    const { container } = render(
+      <ChatView
+        turnState={turnState(null)}
+        items={[
+          item({
+            id: "item-agent-mermaid",
+            role: "agent",
+            itemType: "agentMessage",
+            text: "```mermaid\nflowchart TD\nA[Start] --> B[End]\n```",
+          }),
+        ]}
+        threadLoading={false}
+        threadCwd="C:/workspace/demo"
+        composerValue=""
+        selectorLabel="Select model"
+        selectorDisplay="gpt-5 / medium"
+        selectorOptions={[{ value: "gpt-5", label: "gpt-5" }]}
+        selectorValue="gpt-5"
+        busy={false}
+        onComposerChange={vi.fn()}
+        onSelectorChange={vi.fn(() => true)}
+        onCreateThread={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+        onInterrupt={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mermaidRenderMock).toHaveBeenCalledTimes(1);
+    });
+    expect(mermaidInitializeMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByLabelText("Mermaid diagram")).toBeVisible();
+    expect(container.querySelector(".chat-mermaid-svg svg")).not.toBeNull();
+  });
+
+  it("shows copy button for mermaid code block and copies source", async () => {
+    render(
+      <ChatView
+        turnState={turnState(null)}
+        items={[
+          item({
+            id: "item-agent-mermaid-copy",
+            role: "agent",
+            itemType: "agentMessage",
+            text: "```mermaid\nflowchart TD\nA[Start] --> B[End]\n```",
+          }),
+        ]}
+        threadLoading={false}
+        threadCwd="C:/workspace/demo"
+        composerValue=""
+        selectorLabel="Select model"
+        selectorDisplay="gpt-5 / medium"
+        selectorOptions={[{ value: "gpt-5", label: "gpt-5" }]}
+        selectorValue="gpt-5"
+        busy={false}
+        onComposerChange={vi.fn()}
+        onSelectorChange={vi.fn(() => true)}
+        onCreateThread={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+        onInterrupt={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mermaidRenderMock).toHaveBeenCalledTimes(1);
+    });
+    const copyButton = screen.getByRole("button", { name: "Copy code block" });
+    fireEvent.click(copyButton);
+    await waitFor(() => {
+      expect(clipboardWriteTextMock).toHaveBeenCalledWith("flowchart TD\nA[Start] --> B[End]");
+    });
+  });
+
+  it("retries mermaid import after dynamic import failure and recovers", async () => {
+    const localImportMock = vi.fn()
+      .mockRejectedValueOnce(new Error("failed to import mermaid"))
+      .mockResolvedValue({
+        default: {
+          initialize: (...args: unknown[]) => mermaidInitializeMock(...args),
+          render: (...args: unknown[]) => mermaidRenderMock(...args),
+        },
+      });
+    __chatViewTestOnly.setMermaidImporter(() => localImportMock());
+
+    const { rerender } = render(
+      <ChatView
+        turnState={turnState(null)}
+        items={[
+          item({
+            id: "item-agent-mermaid-retry-1",
+            role: "agent",
+            itemType: "agentMessage",
+            text: "```mermaid\nflowchart TD\nA[Start] --> B[Fail]\n```",
+          }),
+        ]}
+        threadLoading={false}
+        threadCwd="C:/workspace/demo"
+        composerValue=""
+        selectorLabel="Select model"
+        selectorDisplay="gpt-5 / medium"
+        selectorOptions={[{ value: "gpt-5", label: "gpt-5" }]}
+        selectorValue="gpt-5"
+        busy={false}
+        onComposerChange={vi.fn()}
+        onSelectorChange={vi.fn(() => true)}
+        onCreateThread={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+        onInterrupt={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(localImportMock).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.getByText("Failed to render Mermaid diagram.")).toBeVisible();
+
+    rerender(
+      <ChatView
+        turnState={turnState(null)}
+        items={[
+          item({
+            id: "item-agent-mermaid-retry-2",
+            role: "agent",
+            itemType: "agentMessage",
+            text: "```mermaid\nflowchart LR\nA[Retry] --> B[Success]\n```",
+          }),
+        ]}
+        threadLoading={false}
+        threadCwd="C:/workspace/demo"
+        composerValue=""
+        selectorLabel="Select model"
+        selectorDisplay="gpt-5 / medium"
+        selectorOptions={[{ value: "gpt-5", label: "gpt-5" }]}
+        selectorValue="gpt-5"
+        busy={false}
+        onComposerChange={vi.fn()}
+        onSelectorChange={vi.fn(() => true)}
+        onCreateThread={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+        onInterrupt={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(localImportMock).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(mermaidRenderMock).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.getByLabelText("Mermaid diagram")).toBeVisible();
+  });
+
+  it("recovers on next mermaid render after previous render failure", async () => {
+    mermaidRenderMock
+      .mockRejectedValueOnce(new Error("render failed"))
+      .mockResolvedValueOnce({ svg: "<svg><g><text>recovered</text></g></svg>" });
+
+    const { rerender } = render(
+      <ChatView
+        turnState={turnState(null)}
+        items={[
+          item({
+            id: "item-agent-mermaid-render-fail-1",
+            role: "agent",
+            itemType: "agentMessage",
+            text: "```mermaid\nflowchart TD\nA[Fail] --> B[First]\n```",
+          }),
+        ]}
+        threadLoading={false}
+        threadCwd="C:/workspace/demo"
+        composerValue=""
+        selectorLabel="Select model"
+        selectorDisplay="gpt-5 / medium"
+        selectorOptions={[{ value: "gpt-5", label: "gpt-5" }]}
+        selectorValue="gpt-5"
+        busy={false}
+        onComposerChange={vi.fn()}
+        onSelectorChange={vi.fn(() => true)}
+        onCreateThread={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+        onInterrupt={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mermaidRenderMock).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.getByText("Failed to render Mermaid diagram.")).toBeVisible();
+
+    rerender(
+      <ChatView
+        turnState={turnState(null)}
+        items={[
+          item({
+            id: "item-agent-mermaid-render-fail-2",
+            role: "agent",
+            itemType: "agentMessage",
+            text: "```mermaid\nflowchart LR\nA[Retry] --> B[Recovered]\n```",
+          }),
+        ]}
+        threadLoading={false}
+        threadCwd="C:/workspace/demo"
+        composerValue=""
+        selectorLabel="Select model"
+        selectorDisplay="gpt-5 / medium"
+        selectorOptions={[{ value: "gpt-5", label: "gpt-5" }]}
+        selectorValue="gpt-5"
+        busy={false}
+        onComposerChange={vi.fn()}
+        onSelectorChange={vi.fn(() => true)}
+        onCreateThread={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+        onInterrupt={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mermaidRenderMock).toHaveBeenCalledTimes(2);
+    });
+    expect(mermaidImportMock).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(screen.getByLabelText("Mermaid diagram")).toBeVisible();
+    });
+    expect(screen.queryByText("Failed to render Mermaid diagram.")).toBeNull();
   });
 
   it("renders plain URL in user message as clickable link", () => {
