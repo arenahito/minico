@@ -709,8 +709,8 @@ pre {
 }
 
 .chat-pane-loading-image {
-  width: 56px;
-  height: 56px;
+  width: 100px;
+  height: 100px;
   animation: chat-loading-spin 1.2s linear infinite;
   opacity: 0.9;
 }
