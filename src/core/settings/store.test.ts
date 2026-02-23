@@ -14,7 +14,7 @@ describe("settings store", () => {
     const snapshot: SettingsSnapshot = {
       config: {
         schemaVersion: 1,
-        codex: { path: null, homePath: "~/.codex", personality: "friendly" },
+        codex: { path: null, homePath: "~/.minico/codex", personality: "friendly" },
         workspace: { lastPath: null },
         diagnostics: { logLevel: "info" },
         appearance: { theme: "light" },
@@ -23,7 +23,7 @@ describe("settings store", () => {
         },
       },
       configPath: "C:/Users/test/.minico/config.json",
-      effectiveCodexHome: "C:/Users/test/.codex",
+      effectiveCodexHome: "C:/Users/test/.minico/codex",
     };
     mockedInvoke.mockResolvedValueOnce(snapshot);
 
@@ -36,7 +36,7 @@ describe("settings store", () => {
       schemaVersion: 1,
       codex: {
         path: "C:/codex/codex.exe",
-        homePath: "C:/Users/test/.codex",
+        homePath: "C:/Users/test/.minico/codex",
         personality: "friendly",
       },
       workspace: { lastPath: null },
@@ -49,7 +49,7 @@ describe("settings store", () => {
     const response = {
       config,
       configPath: "C:/Users/test/.minico/config.json",
-      effectiveCodexHome: "C:/Users/test/.codex",
+      effectiveCodexHome: "C:/Users/test/.minico/codex",
     };
     mockedInvoke.mockResolvedValueOnce(response);
 

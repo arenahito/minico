@@ -16,14 +16,29 @@ function readCommandContext(params: Record<string, unknown>): {
   reason: string | null;
 } {
   const commandAction = params.command as
-    | { command?: string[]; cwd?: string }
+    | { command?: string[] | string; argv?: string[]; cwd?: string }
+    | string[]
+    | string
     | undefined;
-  const command = Array.isArray(commandAction?.command)
-    ? commandAction.command.join(" ")
-    : "(unknown command)";
+  const command =
+    typeof commandAction === "string"
+      ? commandAction
+      : Array.isArray(commandAction)
+        ? commandAction.join(" ")
+        : Array.isArray(commandAction?.command)
+          ? commandAction.command.join(" ")
+          : typeof commandAction?.command === "string"
+            ? commandAction.command
+            : Array.isArray(commandAction?.argv)
+              ? commandAction.argv.join(" ")
+              : "(unknown command)";
+  const commandCwd =
+    commandAction && typeof commandAction === "object" && !Array.isArray(commandAction)
+      ? commandAction.cwd
+      : undefined;
   return {
     command,
-    cwd: commandAction?.cwd ?? String(params.cwd ?? "(unknown cwd)"),
+    cwd: commandCwd ?? String(params.cwd ?? "(unknown cwd)"),
     reason: (params.reason as string | null | undefined) ?? null,
   };
 }
@@ -94,4 +109,3 @@ export function ApprovalDialog({ request, busy, onDecision }: ApprovalDialogProp
     </div>
   );
 }
-

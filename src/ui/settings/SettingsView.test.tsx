@@ -40,7 +40,7 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
 const snapshot: SettingsSnapshot = {
   config: {
     schemaVersion: 1,
-    codex: { path: null, homePath: "~/.codex", personality: "friendly" },
+    codex: { path: null, homePath: "~/.minico/codex", personality: "friendly" },
     workspace: { lastPath: null },
     diagnostics: { logLevel: "info" },
     appearance: { theme: "light" },
@@ -49,7 +49,7 @@ const snapshot: SettingsSnapshot = {
     },
   },
   configPath: "C:/Users/test/.minico/config.json",
-  effectiveCodexHome: "C:/Users/test/.codex",
+  effectiveCodexHome: "C:/Users/test/.minico/codex",
 };
 
 describe("SettingsView", () => {
@@ -73,8 +73,8 @@ describe("SettingsView", () => {
       ...snapshot,
       config,
       effectiveCodexHome: config.codex.homePath?.startsWith("~")
-        ? "C:/Users/test/.codex"
-        : (config.codex.homePath ?? "C:/Users/test/.codex"),
+        ? "C:/Users/test/.minico/codex"
+        : (config.codex.homePath ?? "C:/Users/test/.minico/codex"),
     }));
     exportDiagnosticsLogs.mockResolvedValue({
       logPath: "C:/Users/test/.minico/logs/diagnostics.log",
@@ -88,7 +88,7 @@ describe("SettingsView", () => {
     await screen.findByRole("heading", { level: 2, name: "Settings" });
     expect(loadSettings).toHaveBeenCalledTimes(1);
     expect(screen.getByDisplayValue("info")).toBeVisible();
-    expect(screen.getByDisplayValue("C:/Users/test/.codex")).toBeVisible();
+    expect(screen.getByDisplayValue("C:/Users/test/.minico/codex")).toBeVisible();
   });
 
   it("saves updated text values on blur", async () => {
@@ -275,13 +275,12 @@ describe("SettingsView", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Use default CODEX_HOME" }));
     expect(
-      screen.getByText("CODEX_HOME reset to default: C:/Users/test/.codex"),
+      screen.getByText("CODEX_HOME reset to default: C:/Users/test/.minico/codex"),
     ).toBeVisible();
+    expect(screen.getByDisplayValue("C:/Users/test/.minico/codex")).toBeVisible();
 
     await waitFor(() => {
-      expect(saveSettings).toHaveBeenCalledTimes(1);
-      const savedConfig = saveSettings.mock.calls[0]?.[0];
-      expect(savedConfig.codex.homePath).toBe("C:/Users/test/.codex");
+      expect(saveSettings).toHaveBeenCalledTimes(0);
     });
   });
 

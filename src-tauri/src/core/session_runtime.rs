@@ -76,3 +76,20 @@ pub fn with_facade_slot<T>(
         .ok_or_else(|| "session runtime was not initialized".to_string())?;
     action(facade)
 }
+
+#[tauri::command]
+pub async fn session_reset_runtime(
+    state: State<'_, SessionRuntimeState>,
+) -> Result<(), String> {
+    let slot = facade_slot(&state);
+    run_blocking_task(move || {
+        let mut guard = slot
+            .lock()
+            .map_err(|_| "session runtime lock poisoned".to_string())?;
+        if let Some(mut facade) = guard.take() {
+            let _ = facade.shutdown();
+        }
+        Ok(())
+    })
+    .await
+}

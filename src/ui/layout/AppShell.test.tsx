@@ -49,7 +49,73 @@ vi.mock("../../core/window/windowStateClient", () => ({
 }));
 
 vi.mock("../settings/SettingsView", () => ({
-  SettingsView: () => <section aria-label="settings mock">settings</section>,
+  SettingsView: ({
+    onSaved,
+  }: {
+    onSaved?: (config: unknown) => void;
+  }) => (
+    <section aria-label="settings mock">
+      settings
+      <button
+        type="button"
+        onClick={() =>
+          onSaved?.(
+            {
+              schemaVersion: 1,
+              codex: {
+                path: null,
+                homePath: "C:/alt-codex-home",
+                personality: "friendly",
+              },
+              workspace: { lastPath: "C:/workspace/demo" },
+              diagnostics: { logLevel: "info" },
+              appearance: { theme: "light" },
+              window: {
+                placement: {
+                  x: 100,
+                  y: 100,
+                  width: 1000,
+                  height: 700,
+                  maximized: false,
+                  scaleFactor: null,
+                },
+              },
+            },
+          )
+        }
+      >
+        mock codex home changed
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          onSaved?.({
+            schemaVersion: 1,
+            codex: {
+              path: null,
+              homePath: "~/.minico/codex",
+              personality: "friendly",
+            },
+            workspace: { lastPath: "C:/workspace/demo" },
+            diagnostics: { logLevel: "info" },
+            appearance: { theme: "light" },
+            window: {
+              placement: {
+                x: 100,
+                y: 100,
+                width: 1000,
+                height: 700,
+                maximized: false,
+                scaleFactor: null,
+              },
+            },
+          })
+        }
+      >
+        mock codex home reverted
+      </button>
+    </section>
+  ),
 }));
 
 const mockedInvoke = vi.mocked(invoke);
@@ -200,6 +266,13 @@ describe("AppShell", () => {
       if (command === "thread_list") {
         return { threads: [] };
       }
+      if (command === "settings_read") {
+        return {
+          config: {
+            codex: { homePath: "~/.minico/codex" },
+          },
+        };
+      }
       if (command === "workspace_resolve_active_cwd") {
         return {
           cwd: "C:/workspace/demo",
@@ -227,6 +300,164 @@ describe("AppShell", () => {
     await waitFor(() => {
       expect(screen.queryByRole("dialog", { name: "Settings" })).toBeNull();
     });
+  });
+
+  it("reinitializes app when CODEX_HOME changed and settings is closed", async () => {
+    const user = userEvent.setup();
+    const nextAuthDeferred = deferred<unknown>();
+    let authReadCount = 0;
+    let pollCount = 0;
+
+    mockedInvoke.mockImplementation(async (command, args) => {
+      if (command === "auth_read_status") {
+        authReadCount += 1;
+        if (authReadCount === 1) {
+          return {
+            state: "loggedIn",
+            accountEmail: "demo@example.com",
+            requiresOpenaiAuth: false,
+            rawAuthMode: "chatgpt",
+            message: null,
+          };
+        }
+        return nextAuthDeferred.promise;
+      }
+      if (command === "thread_list") {
+        return {
+          threads: [{ id: "thread-1", name: null, preview: "first" }],
+          nextCursor: null,
+        };
+      }
+      if (command === "settings_read") {
+        return {
+          config: {
+            codex: { homePath: "~/.minico/codex" },
+          },
+        };
+      }
+      if (command === "thread_resume") {
+        expect(args).toEqual({ threadId: "thread-1" });
+        return {
+          threadId: "thread-1",
+          cwd: "C:/workspace/thread-1",
+          workspaceFallbackUsed: false,
+          workspaceWarning: null,
+          historyItems: [],
+        };
+      }
+      if (command === "workspace_resolve_active_cwd") {
+        return {
+          cwd: "C:/workspace/demo",
+          fallbackUsed: false,
+          warning: null,
+        };
+      }
+      if (command === "model_list") {
+        return { models: [] };
+      }
+      if (command === "session_poll_events") {
+        pollCount += 1;
+        if (pollCount === 1) {
+          return [
+            {
+              kind: "notification",
+              method: "turn/started",
+              params: {
+                threadId: "thread-1",
+                turn: { id: "turn-1" },
+              },
+            },
+          ];
+        }
+        return [];
+      }
+      if (command === "turn_interrupt") {
+        return {};
+      }
+      if (command === "session_reset_runtime") {
+        return {};
+      }
+      return undefined;
+    });
+
+    render(<AppShell />);
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "first" })).toBeVisible();
+    });
+
+    await user.click(screen.getByRole("button", { name: "first" }));
+    await waitFor(() => {
+      expect(mockedInvoke).toHaveBeenCalledWith("thread_resume", {
+        threadId: "thread-1",
+      });
+    });
+
+    await user.click(screen.getByRole("button", { name: "Open settings" }));
+    await user.click(screen.getByRole("button", { name: "mock codex home changed" }));
+    await user.click(screen.getByRole("button", { name: "Close settings" }));
+
+    await waitFor(() => {
+      expect(mockedInvoke).toHaveBeenCalledWith("session_reset_runtime");
+      expect(screen.getByRole("heading", { name: "Preparing minico" })).toBeVisible();
+    });
+  });
+
+  it("does not reinitialize when CODEX_HOME is changed and then reverted before closing settings", async () => {
+    const user = userEvent.setup();
+    mockedInvoke.mockImplementation(async (command) => {
+      if (command === "auth_read_status") {
+        return {
+          state: "loggedIn",
+          accountEmail: "demo@example.com",
+          requiresOpenaiAuth: false,
+          rawAuthMode: "chatgpt",
+          message: null,
+        };
+      }
+      if (command === "thread_list") {
+        return { threads: [], nextCursor: null };
+      }
+      if (command === "settings_read") {
+        return {
+          config: {
+            codex: { homePath: "~/.minico/codex" },
+          },
+        };
+      }
+      if (command === "workspace_resolve_active_cwd") {
+        return {
+          cwd: "C:/workspace/demo",
+          fallbackUsed: false,
+          warning: null,
+        };
+      }
+      if (command === "model_list") {
+        return { models: [] };
+      }
+      if (command === "session_poll_events") {
+        return [];
+      }
+      if (command === "session_reset_runtime") {
+        return {};
+      }
+      return undefined;
+    });
+
+    render(<AppShell />);
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { level: 2, name: "Threads" })).toBeVisible();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Open settings" }));
+    await user.click(screen.getByRole("button", { name: "mock codex home changed" }));
+    await user.click(screen.getByRole("button", { name: "mock codex home reverted" }));
+    await user.click(screen.getByRole("button", { name: "Close settings" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Settings" })).toBeNull();
+      expect(screen.getByRole("heading", { level: 2, name: "Threads" })).toBeVisible();
+    });
+    expect(mockedInvoke).not.toHaveBeenCalledWith("session_reset_runtime");
   });
 
   it("shows default workspace path when no thread is selected", async () => {

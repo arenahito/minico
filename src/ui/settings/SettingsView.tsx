@@ -29,7 +29,7 @@ const codexPersonalities: CodexPersonality[] = [
   "none",
 ];
 const appThemes: AppTheme[] = ["light", "dark"];
-const DEFAULT_CODEX_HOME_ALIAS = "~/.codex";
+const DEFAULT_CODEX_HOME_ALIAS = "~/.minico/codex";
 
 function normalizeCodexPath(value: string): string | null {
   const trimmed = value.trim();
@@ -71,8 +71,25 @@ function resolveCodexHomeInputValue(
   return normalized;
 }
 
+function resolveDefaultCodexHomeDisplayValue(
+  defaultWorkspacePath: string | null,
+): string {
+  const raw = defaultWorkspacePath?.trim() ?? "";
+  if (raw.length === 0) {
+    return DEFAULT_CODEX_HOME_ALIAS;
+  }
+  const replaced = raw.replace(/([\\/])workspace$/i, "$1codex");
+  if (replaced !== raw) {
+    return replaced;
+  }
+  if (raw.includes("\\")) {
+    return `${raw}\\codex`;
+  }
+  return `${raw}/codex`;
+}
+
 interface SettingsViewProps {
-  onSaved?: (config: MinicoConfig) => void;
+  onSaved?: (config: MinicoConfig, meta: { codexHomeChanged: boolean }) => void;
 }
 
 export function SettingsView({ onSaved }: SettingsViewProps) {
@@ -97,6 +114,7 @@ export function SettingsView({ onSaved }: SettingsViewProps) {
   const [saving, setSaving] = useState(false);
   const pendingSaveConfigRef = useRef<MinicoConfig | null>(null);
   const savingInFlightRef = useRef(false);
+  const lastSavedSnapshotRef = useRef<SettingsSnapshot | null>(null);
 
   function showSettingsToast(message: string) {
     setDiagnosticsToast({
@@ -122,6 +140,7 @@ export function SettingsView({ onSaved }: SettingsViewProps) {
           },
         };
         setSnapshot(loaded);
+        lastSavedSnapshotRef.current = loaded;
         setConfig(normalizedConfig);
         setCodexPathInput(loaded.config.codex.path ?? "");
         setCodexHomeInput(
@@ -208,6 +227,10 @@ export function SettingsView({ onSaved }: SettingsViewProps) {
         }
 
         const updated = await saveSettings(nextConfig);
+        const previousCodexHome = lastSavedSnapshotRef.current?.effectiveCodexHome ?? null;
+        const nextCodexHome = updated.effectiveCodexHome ?? null;
+        const codexHomeChanged = previousCodexHome !== nextCodexHome;
+        lastSavedSnapshotRef.current = updated;
         setSnapshot(updated);
         setConfig(updated.config);
         setCodexPathInput(updated.config.codex.path ?? "");
@@ -220,7 +243,7 @@ export function SettingsView({ onSaved }: SettingsViewProps) {
         setWorkspacePathInput(
           updated.config.workspace.lastPath ?? defaultWorkspacePath ?? "",
         );
-        onSaved?.(updated.config);
+        onSaved?.(updated.config, { codexHomeChanged });
       }
     } catch (saveError) {
       setError(String(saveError));
@@ -314,13 +337,16 @@ export function SettingsView({ onSaved }: SettingsViewProps) {
     if (!config) {
       return;
     }
-    const nextCodexHome = snapshot?.effectiveCodexHome ?? DEFAULT_CODEX_HOME_ALIAS;
-    setCodexHomeInput(nextCodexHome);
+    const nextCodexHome = DEFAULT_CODEX_HOME_ALIAS;
+    const nextCodexHomeDisplay = resolveDefaultCodexHomeDisplayValue(
+      defaultWorkspacePath,
+    );
+    setCodexHomeInput(nextCodexHomeDisplay);
     const nextConfig = composeConfig(config, {
       codexHomeInputValue: nextCodexHome,
     });
     queueSave(nextConfig);
-    showSettingsToast(`CODEX_HOME reset to default: ${nextCodexHome}`);
+    showSettingsToast(`CODEX_HOME reset to default: ${nextCodexHomeDisplay}`);
   }
 
   function onResetWorkspaceDefault() {
@@ -423,7 +449,7 @@ export function SettingsView({ onSaved }: SettingsViewProps) {
             value={codexHomeInput}
             onChange={(event) => setCodexHomeInput(event.currentTarget.value)}
             onBlur={onCodexHomeBlur}
-            placeholder="~/.codex"
+            placeholder="~/.minico/codex"
           />
           <button
             type="button"
@@ -444,6 +470,9 @@ export function SettingsView({ onSaved }: SettingsViewProps) {
             <RotateCcw size={16} aria-hidden="true" />
           </button>
         </div>
+        <p className="settings-field-note">
+          Changes to CODEX_HOME are applied after closing Settings. Any active turn and unsent input will be discarded.
+        </p>
 
         <WorkspacePicker
           value={workspacePathInput}

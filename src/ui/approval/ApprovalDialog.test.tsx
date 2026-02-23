@@ -63,4 +63,25 @@ describe("ApprovalDialog", () => {
     expect(onDecision).toHaveBeenNthCalledWith(3, "decline");
     expect(onDecision).toHaveBeenNthCalledWith(4, "cancel");
   });
+
+  it("renders command approval context when command is provided as a string", () => {
+    render(
+      <ApprovalDialog
+        request={{
+          requestId: 3,
+          method: "item/commandExecution/requestApproval",
+          params: {
+            command: "git status",
+            cwd: "C:/repo",
+          },
+          receivedAt: Date.now(),
+        }}
+        busy={false}
+        onDecision={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("git status")).toBeVisible();
+    expect(screen.getByText("C:/repo")).toBeVisible();
+  });
 });

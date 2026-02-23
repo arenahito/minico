@@ -8,7 +8,7 @@ use thiserror::Error;
 use super::paths;
 use super::session_runtime::run_blocking_task;
 
-const DEFAULT_CODEX_HOME_ALIAS: &str = "~/.codex";
+const DEFAULT_CODEX_HOME_ALIAS: &str = "~/.minico/codex";
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
@@ -259,7 +259,11 @@ fn resolve_configured_codex_home_path(raw: &str) -> Result<PathBuf, ConfigError>
         .strip_prefix("~/")
         .or_else(|| raw.strip_prefix("~\\"))
     {
-        return Ok(paths::home_dir()?.join(suffix));
+        #[cfg(windows)]
+        let normalized_suffix = suffix.replace('/', "\\");
+        #[cfg(not(windows))]
+        let normalized_suffix = suffix.replace('\\', "/");
+        return Ok(paths::home_dir()?.join(normalized_suffix));
     }
     Ok(PathBuf::from(raw))
 }
@@ -388,7 +392,7 @@ mod tests {
         let config = MinicoConfig::default();
         assert_eq!(config.schema_version, 1);
         assert_eq!(config.codex.path, None);
-        assert_eq!(config.codex.home_path.as_deref(), Some("~/.codex"));
+        assert_eq!(config.codex.home_path.as_deref(), Some("~/.minico/codex"));
         assert_eq!(config.codex.personality, "friendly");
         assert_eq!(config.workspace.last_path, None);
         assert_eq!(config.diagnostics.log_level, LogLevel::Info);
@@ -494,7 +498,8 @@ mod tests {
         let default_home = effective_codex_home(&config).expect("value when defaulting");
         assert!(default_home.is_some());
         let default_path = default_home.expect("default codex home path");
-        assert!(default_path.ends_with(".codex"));
+        let normalized_default_path = default_path.replace('\\', "/");
+        assert!(normalized_default_path.ends_with(".minico/codex"));
 
         let mut custom_config = config;
         custom_config.codex.home_path = Some("C:/custom/codex-home".to_string());
@@ -520,7 +525,7 @@ mod tests {
         .expect("write config");
 
         let loaded = load_or_default(&config_path).expect("load should work");
-        assert_eq!(loaded.codex.home_path.as_deref(), Some("~/.codex"));
+        assert_eq!(loaded.codex.home_path.as_deref(), Some("~/.minico/codex"));
     }
 
     #[test]

@@ -32,7 +32,7 @@ pub fn config_file_path_from_home(home: &Path) -> PathBuf {
 }
 
 pub fn default_codex_home_path_from_home(home: &Path) -> PathBuf {
-    home.join(".codex")
+    minico_dir_from_home(home).join("codex")
 }
 
 pub fn default_workspace_path_from_home(home: &Path) -> PathBuf {
@@ -58,7 +58,7 @@ mod tests {
         );
         assert_eq!(
             default_codex_home_path_from_home(home),
-            Path::new("/tmp/demo/.codex")
+            Path::new("/tmp/demo/.minico/codex")
         );
         assert_eq!(
             default_workspace_path_from_home(home),

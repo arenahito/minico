@@ -25,6 +25,7 @@ pub trait RpcRuntime {
     fn take_stderr_lines(&mut self) -> Result<Vec<String>, String>;
     fn is_running(&mut self) -> Result<bool, String>;
     fn restart(&mut self) -> Result<(), String>;
+    fn shutdown(&mut self) -> Result<(), String>;
 }
 
 pub struct RealRuntime {
@@ -90,6 +91,14 @@ impl RpcRuntime for RealRuntime {
         self.process = AppServerProcess::spawn(self.codex_path.as_deref(), self.env_vars.clone())
             .map_err(|error| error.to_string())?;
         Ok(())
+    }
+
+    fn shutdown(&mut self) -> Result<(), String> {
+        let running = self.process.is_running().map_err(|error| error.to_string())?;
+        if !running {
+            return Ok(());
+        }
+        self.process.terminate().map_err(|error| error.to_string())
     }
 }
 
@@ -258,6 +267,12 @@ impl<R: RpcRuntime> CodexFacade<R> {
             .map_err(CodexFacadeError::Runtime)
     }
 
+    pub fn shutdown(&mut self) -> Result<(), CodexFacadeError> {
+        self.runtime.shutdown().map_err(CodexFacadeError::Runtime)?;
+        self.state = LifecycleState::Starting;
+        Ok(())
+    }
+
     fn request_json(&mut self, method: &str, params: Value) -> Result<Value, CodexFacadeError> {
         self.ensure_ready()?;
 
@@ -415,6 +430,11 @@ mod tests {
         fn restart(&mut self) -> Result<(), String> {
             self.running = true;
             self.restart_count += 1;
+            Ok(())
+        }
+
+        fn shutdown(&mut self) -> Result<(), String> {
+            self.running = false;
             Ok(())
         }
     }

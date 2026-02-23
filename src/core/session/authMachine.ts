@@ -143,3 +143,7 @@ export async function startChatgptLogin(): Promise<AuthLoginStartResult> {
 export async function logoutAndReadAuth(): Promise<BackendAuthStatus> {
   return invoke<BackendAuthStatus>("auth_logout_and_read");
 }
+
+export async function resetSessionRuntime(): Promise<void> {
+  await invoke("session_reset_runtime");
+}

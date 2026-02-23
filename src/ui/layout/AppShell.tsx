@@ -52,6 +52,7 @@ import {
   logoutAndReadAuth,
   readAuthStatus,
   reduceAuthMachine,
+  resetSessionRuntime,
   startChatgptLogin,
   type AuthMachineState,
 } from "../../core/session/authMachine";
@@ -168,6 +169,7 @@ const THREAD_LIST_PAGE_SIZE = 30;
 const SETTINGS_MODAL_ANIMATION_MS = 300;
 const DEFAULT_CODEX_PERSONALITY: CodexPersonality = "friendly";
 const DEFAULT_APP_THEME: AppTheme = "light";
+const DEFAULT_CODEX_HOME_ALIAS = "~/.minico/codex";
 const REASONING_EFFORTS = new Set<ReasoningEffort>([
   "none",
   "minimal",
@@ -210,6 +212,11 @@ function normalizeTheme(value: string | null | undefined): AppTheme {
     return value;
   }
   return DEFAULT_APP_THEME;
+}
+
+function normalizeCodexHomePath(value: string | null | undefined): string {
+  const trimmed = value?.trim() ?? "";
+  return trimmed.length > 0 ? trimmed : DEFAULT_CODEX_HOME_ALIAS;
 }
 
 function resolveModelCatalog(models: ModelSummary[]): ModelSummary[] {
@@ -375,6 +382,10 @@ export function AppShell() {
   const activeTurnIdRef = useRef<string | null>(turnState.activeTurnId);
   const activeThreadIdRef = useRef<string | null>(activeThreadId);
   const pendingThreadTitleRefreshTurnIdsRef = useRef<Set<string>>(new Set());
+  const codexHomeChangedWhileSettingsOpenRef = useRef(false);
+  const codexHomeSwitchInFlightRef = useRef(false);
+  const codexHomeAtSettingsOpenRef = useRef<string | null>(null);
+  const codexHomeLatestWhileSettingsOpenRef = useRef<string | null>(null);
 
   const activeApproval = useMemo(
     () => currentApproval(approvalState),
@@ -515,6 +526,9 @@ export function AppShell() {
   useEffect(() => {
     if (auth.view !== "loggedIn") {
       closeSettingsModal(true);
+      codexHomeChangedWhileSettingsOpenRef.current = false;
+      codexHomeAtSettingsOpenRef.current = null;
+      codexHomeLatestWhileSettingsOpenRef.current = null;
       setActiveThreadCwd(null);
       setDefaultThreadCwd(null);
       setSelectedThreadCwdOverride(null);
@@ -1235,6 +1249,70 @@ export function AppShell() {
     setAuthRefreshKey((current) => current + 1);
   }
 
+  function updateCodexHomeChangedState(): void {
+    const base = codexHomeAtSettingsOpenRef.current;
+    const latest = codexHomeLatestWhileSettingsOpenRef.current;
+    if (!base || !latest) {
+      codexHomeChangedWhileSettingsOpenRef.current = false;
+      return;
+    }
+    codexHomeChangedWhileSettingsOpenRef.current = base !== latest;
+  }
+
+  async function handleCodexHomeSwitchAfterSettingsClose(): Promise<void> {
+    if (codexHomeSwitchInFlightRef.current) {
+      return;
+    }
+    codexHomeSwitchInFlightRef.current = true;
+
+    setBusy(true);
+    try {
+      const currentThreadId = activeThreadIdRef.current ?? activeThreadId;
+      const currentTurnId = activeTurnIdRef.current ?? turnState.activeTurnId;
+      if (currentThreadId && currentTurnId) {
+        try {
+          await interruptTurn(currentThreadId, currentTurnId);
+        } catch (reason) {
+          setError(mapErrorToUserFacing(reason));
+        }
+      }
+
+      await resetSessionRuntime();
+
+      selectThreadRequestSeqRef.current += 1;
+      localUserItemSeqRef.current = 0;
+      activeThreadIdRef.current = null;
+      activeTurnIdRef.current = null;
+      pendingThreadTitleRefreshTurnIdsRef.current.clear();
+      setActiveThreadId(null);
+      setLoadingThreadId(null);
+      setActiveThreadCwd(null);
+      setDefaultThreadCwd(null);
+      setSelectedThreadCwdOverride(null);
+      setThreads([]);
+      setThreadListNextCursor(null);
+      setThreadListLoadingMore(false);
+      setComposerValue("");
+      setApprovalState(initialApprovalState);
+      dispatchTurn({
+        type: "resetThread",
+        threadId: `pending-thread-${Date.now()}`,
+      });
+
+      setAuth(initialAuthMachineState);
+      startupAuthCheckPendingRef.current = true;
+      setStartupAuthCheckPending(true);
+      setStartupAuthCheckSlow(false);
+      setAuthStatusChecking(true);
+      setAuthRefreshKey((current) => current + 1);
+    } catch (reason) {
+      setError(mapErrorToUserFacing(reason));
+    } finally {
+      setBusy(false);
+      codexHomeSwitchInFlightRef.current = false;
+    }
+  }
+
   function persistThreadPanelWidthIfChanged(width: number): void {
     if (persistedThreadPanelWidthRef.current === width) {
       return;
@@ -1278,18 +1356,47 @@ export function AppShell() {
       window.clearTimeout(settingsCloseTimerRef.current);
       settingsCloseTimerRef.current = null;
     }
+    codexHomeChangedWhileSettingsOpenRef.current = false;
+    codexHomeAtSettingsOpenRef.current = null;
+    codexHomeLatestWhileSettingsOpenRef.current = null;
+    void loadSettings()
+      .then((snapshot) => {
+        const currentCodexHome = normalizeCodexHomePath(snapshot.config.codex.homePath);
+        codexHomeAtSettingsOpenRef.current = currentCodexHome;
+        if (!codexHomeLatestWhileSettingsOpenRef.current) {
+          codexHomeLatestWhileSettingsOpenRef.current = currentCodexHome;
+        }
+        updateCodexHomeChangedState();
+      })
+      .catch((reason) => {
+        setError(mapErrorToUserFacing(reason));
+      });
     setSettingsClosing(false);
     setShowSettings(true);
   }
 
   function closeSettingsModal(immediate = false): void {
+    const shouldSwitchCodexHome = codexHomeChangedWhileSettingsOpenRef.current;
+    const finalizeClose = (): void => {
+      setSettingsClosing(false);
+      setShowSettings(false);
+      if (shouldSwitchCodexHome) {
+        codexHomeChangedWhileSettingsOpenRef.current = false;
+        codexHomeAtSettingsOpenRef.current = null;
+        codexHomeLatestWhileSettingsOpenRef.current = null;
+        void handleCodexHomeSwitchAfterSettingsClose();
+      } else {
+        codexHomeAtSettingsOpenRef.current = null;
+        codexHomeLatestWhileSettingsOpenRef.current = null;
+      }
+    };
+
     if (immediate) {
       if (settingsCloseTimerRef.current !== null) {
         window.clearTimeout(settingsCloseTimerRef.current);
         settingsCloseTimerRef.current = null;
       }
-      setSettingsClosing(false);
-      setShowSettings(false);
+      finalizeClose();
       return;
     }
     if (!showSettings || settingsClosing) {
@@ -1301,8 +1408,7 @@ export function AppShell() {
     }
     settingsCloseTimerRef.current = window.setTimeout(() => {
       settingsCloseTimerRef.current = null;
-      setSettingsClosing(false);
-      setShowSettings(false);
+      finalizeClose();
     }, SETTINGS_MODAL_ANIMATION_MS);
   }
 
@@ -1551,6 +1657,10 @@ export function AppShell() {
                     normalizeCodexPersonality(config.codex.personality),
                   );
                   setTheme(normalizeTheme(config.appearance.theme));
+                  codexHomeLatestWhileSettingsOpenRef.current = normalizeCodexHomePath(
+                    config.codex.homePath,
+                  );
+                  updateCodexHomeChangedState();
                 }}
               />
             </div>
