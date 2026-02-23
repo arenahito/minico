@@ -44,8 +44,8 @@ mod tests {
     use std::path::Path;
 
     use super::{
-        config_file_path_from_home, default_codex_home_path_from_home, default_workspace_path_from_home,
-        minico_dir_from_home,
+        config_file_path_from_home, default_codex_home_path_from_home,
+        default_workspace_path_from_home, minico_dir_from_home,
     };
 
     #[test]

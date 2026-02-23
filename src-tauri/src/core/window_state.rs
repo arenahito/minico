@@ -160,10 +160,8 @@ pub fn persist_thread_panel_width_to_path(
     width: u32,
 ) -> Result<(), ConfigError> {
     let mut config = load_or_default(config_path)?;
-    config.window.thread_panel_width = Some(width.clamp(
-        MIN_THREAD_PANEL_WIDTH,
-        MAX_THREAD_PANEL_WIDTH,
-    ));
+    config.window.thread_panel_width =
+        Some(width.clamp(MIN_THREAD_PANEL_WIDTH, MAX_THREAD_PANEL_WIDTH));
     save_system_update(config_path, &config)
 }
 
@@ -237,12 +235,10 @@ mod tests {
     use super::super::config::{save_system_update, MinicoConfig, WindowPlacement};
     use super::super::monitor::MonitorWorkArea;
     use super::{
-        persist_model_preference_to_path,
-        persist_thread_panel_open_to_path, persist_thread_panel_width_to_path,
-        persist_window_placement_to_path,
-        read_model_preference_from_path,
-        read_thread_panel_open_from_path, read_thread_panel_width_from_path,
-        restore_window_placement,
+        persist_model_preference_to_path, persist_thread_panel_open_to_path,
+        persist_thread_panel_width_to_path, persist_window_placement_to_path,
+        read_model_preference_from_path, read_thread_panel_open_from_path,
+        read_thread_panel_width_from_path, restore_window_placement,
     };
     use tempfile::TempDir;
 

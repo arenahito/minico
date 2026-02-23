@@ -48,23 +48,8 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Lint
-        run: pnpm lint
-
-      - name: Typecheck
-        run: pnpm typecheck
-
-      - name: Frontend tests
-        run: pnpm test
-
-      - name: Rust format check
-        run: pnpm rust:fmt
-
-      - name: Rust clippy
-        run: pnpm rust:clippy
-
-      - name: Rust tests
-        run: pnpm rust:test
+      - name: Verify
+        run: pnpm verify
 
       - name: Tauri build smoke check (no bundles)
-        run: pnpm tauri build --bundles none
+        run: pnpm tauri build --no-bundle

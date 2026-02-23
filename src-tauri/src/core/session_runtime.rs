@@ -78,9 +78,7 @@ pub fn with_facade_slot<T>(
 }
 
 #[tauri::command]
-pub async fn session_reset_runtime(
-    state: State<'_, SessionRuntimeState>,
-) -> Result<(), String> {
+pub async fn session_reset_runtime(state: State<'_, SessionRuntimeState>) -> Result<(), String> {
     let slot = facade_slot(&state);
     run_blocking_task(move || {
         let mut guard = slot

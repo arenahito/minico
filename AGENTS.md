@@ -77,6 +77,7 @@ This file defines repository-specific guardrails for all agents working on `mini
 
 ## Testing Expectations
 
+- After implementing changes, running `pnpm verify` is mandatory before handoff.
 - Add or update tests for behavior changes, not only happy paths.
 - Include coverage for:
   - auth state recovery

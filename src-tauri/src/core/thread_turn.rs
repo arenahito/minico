@@ -1,6 +1,6 @@
+use std::collections::HashSet;
 use std::time::Duration;
 use std::{fs, time::SystemTime};
-use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -160,7 +160,10 @@ fn parse_thread_list(payload: &Value) -> ThreadListResult {
         .get("nextCursor")
         .and_then(Value::as_str)
         .map(ToString::to_string);
-    ThreadListResult { threads, next_cursor }
+    ThreadListResult {
+        threads,
+        next_cursor,
+    }
 }
 
 fn parse_model_list(payload: &Value) -> ModelListResult {
@@ -436,6 +439,7 @@ pub async fn thread_archive(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn turn_start(
     state: State<'_, SessionRuntimeState>,
     thread_id: String,
@@ -593,10 +597,8 @@ mod tests {
     use tempfile::TempDir;
 
     use super::{
-        extract_cwd, extract_thread_id, extract_turn_id, filter_diagnostics_lines, parse_model_list,
-        parse_thread_history_items,
-        parse_thread_list,
-        write_diagnostics_log,
+        extract_cwd, extract_thread_id, extract_turn_id, filter_diagnostics_lines,
+        parse_model_list, parse_thread_history_items, parse_thread_list, write_diagnostics_log,
     };
     use crate::core::config::LogLevel;
 
@@ -665,8 +667,14 @@ mod tests {
         }));
         assert_eq!(parsed.models.len(), 1);
         assert_eq!(parsed.models[0].model, "gpt-5");
-        assert_eq!(parsed.models[0].default_reasoning_effort.as_deref(), Some("medium"));
-        assert_eq!(parsed.models[0].supported_reasoning_efforts, vec!["low", "medium", "high"]);
+        assert_eq!(
+            parsed.models[0].default_reasoning_effort.as_deref(),
+            Some("medium")
+        );
+        assert_eq!(
+            parsed.models[0].supported_reasoning_efforts,
+            vec!["low", "medium", "high"]
+        );
     }
 
     #[test]

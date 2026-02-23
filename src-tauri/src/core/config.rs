@@ -255,10 +255,7 @@ fn resolve_configured_codex_home_path(raw: &str) -> Result<PathBuf, ConfigError>
     if raw == "~" {
         return paths::home_dir();
     }
-    if let Some(suffix) = raw
-        .strip_prefix("~/")
-        .or_else(|| raw.strip_prefix("~\\"))
-    {
+    if let Some(suffix) = raw.strip_prefix("~/").or_else(|| raw.strip_prefix("~\\")) {
         #[cfg(windows)]
         let normalized_suffix = suffix.replace('/', "\\");
         #[cfg(not(windows))]

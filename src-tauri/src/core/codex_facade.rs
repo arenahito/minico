@@ -94,7 +94,10 @@ impl RpcRuntime for RealRuntime {
     }
 
     fn shutdown(&mut self) -> Result<(), String> {
-        let running = self.process.is_running().map_err(|error| error.to_string())?;
+        let running = self
+            .process
+            .is_running()
+            .map_err(|error| error.to_string())?;
         if !running {
             return Ok(());
         }
@@ -226,10 +229,7 @@ impl<R: RpcRuntime> CodexFacade<R> {
         if let Some(value) = cwd {
             params["cwd"] = json!(value);
         }
-        self.request_json(
-            "turn/start",
-            params,
-        )
+        self.request_json("turn/start", params)
     }
 
     pub fn turn_interrupt(

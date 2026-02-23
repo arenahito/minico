@@ -419,6 +419,7 @@ export function AppShell() {
   const codexHomeAtSettingsOpenRef = useRef<string | null>(null);
   const codexHomeLatestWhileSettingsOpenRef = useRef<string | null>(null);
   const loginCodexHomeConfiguredRef = useRef<string>(DEFAULT_CODEX_HOME_ALIAS);
+  const closeSettingsModalRef = useRef<(immediate?: boolean) => void>(() => {});
 
   const activeApproval = useMemo(
     () => currentApproval(approvalState),
@@ -558,7 +559,7 @@ export function AppShell() {
 
   useEffect(() => {
     if (auth.view !== "loggedIn") {
-      closeSettingsModal(true);
+      closeSettingsModalRef.current(true);
       codexHomeChangedWhileSettingsOpenRef.current = false;
       codexHomeAtSettingsOpenRef.current = null;
       codexHomeLatestWhileSettingsOpenRef.current = null;
@@ -702,7 +703,7 @@ export function AppShell() {
     }
     function handleKeyDown(event: KeyboardEvent): void {
       if (event.key === "Escape") {
-        closeSettingsModal();
+        closeSettingsModalRef.current();
       }
     }
     window.addEventListener("keydown", handleKeyDown);
@@ -1600,6 +1601,7 @@ export function AppShell() {
       finalizeClose();
     }, SETTINGS_MODAL_ANIMATION_MS);
   }
+  closeSettingsModalRef.current = closeSettingsModal;
 
   function handleThreadPanelResizeStart(
     event: ReactPointerEvent<HTMLDivElement>,

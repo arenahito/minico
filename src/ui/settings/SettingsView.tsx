@@ -176,7 +176,7 @@ export function SettingsView({ onSaved }: SettingsViewProps) {
       window.clearTimeout(closeTimeoutId);
       window.clearTimeout(removeTimeoutId);
     };
-  }, [diagnosticsToast?.token]);
+  }, [diagnosticsToast]);
 
   function composeConfig(
     baseConfig: MinicoConfig,

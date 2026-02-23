@@ -160,7 +160,9 @@ impl AppServerProcess {
                 return Err(AppServerProcessError::Terminate(error));
             }
         }
-        self.child.wait().map_err(AppServerProcessError::Terminate)?;
+        self.child
+            .wait()
+            .map_err(AppServerProcessError::Terminate)?;
         Ok(())
     }
 

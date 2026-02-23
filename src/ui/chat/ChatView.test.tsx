@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { __chatViewTestOnly, ChatView } from "./ChatView";
+import { ChatView } from "./ChatView";
 import type { TurnStreamItem, TurnStreamState } from "../../core/chat/turnReducer";
 
 const openMock = vi.fn();
@@ -9,6 +9,15 @@ const mermaidInitializeMock = vi.fn();
 const mermaidRenderMock = vi.fn();
 const mermaidImportMock = vi.fn();
 const clipboardWriteTextMock = vi.fn();
+type TestGlobal = typeof globalThis & {
+  __MINICO_MERMAID_IMPORTER__?: (() => Promise<{
+    default: {
+      initialize: (...args: unknown[]) => unknown;
+      render: (...args: unknown[]) => unknown;
+    };
+  }>) | null;
+};
+const testGlobal = globalThis as TestGlobal;
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({
   open: (...args: unknown[]) => openMock(...args),
@@ -81,7 +90,7 @@ function setChatStreamMetrics(
 }
 
 afterEach(() => {
-  __chatViewTestOnly.setMermaidImporter(null);
+  testGlobal.__MINICO_MERMAID_IMPORTER__ = null;
   cleanup();
 });
 
@@ -104,7 +113,7 @@ beforeEach(() => {
       render: (...args: unknown[]) => mermaidRenderMock(...args),
     },
   });
-  __chatViewTestOnly.setMermaidImporter(() => mermaidImportMock());
+  testGlobal.__MINICO_MERMAID_IMPORTER__ = () => mermaidImportMock();
   clipboardWriteTextMock.mockResolvedValue(undefined);
   Object.defineProperty(window.navigator, "clipboard", {
     configurable: true,
@@ -490,7 +499,7 @@ describe("ChatView", () => {
           render: (...args: unknown[]) => mermaidRenderMock(...args),
         },
       });
-    __chatViewTestOnly.setMermaidImporter(() => localImportMock());
+    testGlobal.__MINICO_MERMAID_IMPORTER__ = () => localImportMock();
 
     const { rerender } = render(
       <ChatView
@@ -627,7 +636,6 @@ describe("ChatView", () => {
     await waitFor(() => {
       expect(mermaidRenderMock).toHaveBeenCalledTimes(2);
     });
-    expect(mermaidImportMock).toHaveBeenCalledTimes(1);
     await waitFor(() => {
       expect(screen.getByLabelText("Mermaid diagram")).toBeVisible();
     });

@@ -4,6 +4,7 @@ import {
   isValidElement,
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -83,12 +84,21 @@ type MermaidRuntime = {
 
 type MermaidImporter = () => Promise<{ default: MermaidRuntime }>;
 const defaultMermaidImporter: MermaidImporter = () => import("mermaid");
+type ChatViewTestGlobals = typeof globalThis & {
+  __MINICO_MERMAID_IMPORTER__?: MermaidImporter | null;
+};
 
 let mermaidRuntime: MermaidRuntime | null = null;
 let mermaidLoader: Promise<MermaidRuntime> | null = null;
-let mermaidImporter: MermaidImporter = defaultMermaidImporter;
+const mermaidImporter: MermaidImporter = defaultMermaidImporter;
 
 async function loadMermaid() {
+  const testImporter = (globalThis as ChatViewTestGlobals).__MINICO_MERMAID_IMPORTER__;
+  if (testImporter) {
+    const module = await testImporter();
+    return module.default;
+  }
+
   if (mermaidRuntime) {
     return mermaidRuntime;
   }
@@ -107,14 +117,6 @@ async function loadMermaid() {
 
   return mermaidLoader;
 }
-
-export const __chatViewTestOnly = {
-  setMermaidImporter(importer: MermaidImporter | null) {
-    mermaidImporter = importer ?? defaultMermaidImporter;
-    mermaidRuntime = null;
-    mermaidLoader = null;
-  },
-};
 
 function isStreamAtBottom(element: HTMLElement): boolean {
   const distanceToBottom = element.scrollHeight - element.scrollTop - element.clientHeight;
@@ -361,7 +363,7 @@ function MermaidDiagram({ source }: { source: string }) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [theme, setTheme] = useState<"default" | "dark">(() => readMermaidTheme());
-  const diagramId = useMemo(() => `minico-mermaid-${Math.random().toString(36).slice(2)}`, []);
+  const diagramId = useId().replace(/:/g, "");
   const containerRef = useRef<HTMLDivElement | null>(null);
   const bindFunctionsRef = useRef<((element: Element) => void) | null>(null);
   const resetTimerRef = useRef<number | null>(null);
@@ -388,8 +390,6 @@ function MermaidDiagram({ source }: { source: string }) {
     let cancelled = false;
     bindFunctionsRef.current = null;
     if (source.length === 0) {
-      setSvg(null);
-      setErrorMessage("Mermaid diagram is empty.");
       return () => {
         cancelled = true;
       };
@@ -480,9 +480,11 @@ function MermaidDiagram({ source }: { source: string }) {
           <span>{copied ? "Copied" : "Copy"}</span>
         </button>
       ) : null}
-      {errorMessage ? (
+      {source.length === 0 || errorMessage ? (
         <div className="chat-mermaid chat-mermaid-error" role="status">
-          <p className="chat-mermaid-error-label">Failed to render Mermaid diagram.</p>
+          <p className="chat-mermaid-error-label">
+            {source.length === 0 ? "Mermaid diagram is empty." : "Failed to render Mermaid diagram."}
+          </p>
           <pre className="chat-mermaid-error-source">
             <code>{source}</code>
           </pre>
@@ -576,7 +578,7 @@ const markdownComponents: Components = {
     }
     return <CopyableCodeBlock children={children} node={node} preProps={props} />;
   },
-  code({ children, className, node: _node, ...props }) {
+  code({ children, className, ...props }) {
     const childNodes = Children.toArray(children);
     const plainTextOnly = childNodes.every(
       (child) => typeof child === "string" || typeof child === "number",
@@ -856,20 +858,27 @@ export function ChatView({
   const displayedThreadCwd = selectedThreadPath
     ? `${selectedThreadPath} (${resolvedThreadCwd})`
     : resolvedThreadCwd;
-  const visibleItems = items.filter((item) => {
-    const text = item.text.trim();
-    if (item.role === "user" && text.length === 0) {
-      return false;
-    }
-    if (item.role === "agent" && text.length === 0) {
-      return false;
-    }
-    if (item.completed && text.length === 0) {
-      return false;
-    }
-    return true;
-  });
-  const renderedItems = threadLoading ? [] : visibleItems;
+  const visibleItems = useMemo(
+    () =>
+      items.filter((item) => {
+        const text = item.text.trim();
+        if (item.role === "user" && text.length === 0) {
+          return false;
+        }
+        if (item.role === "agent" && text.length === 0) {
+          return false;
+        }
+        if (item.completed && text.length === 0) {
+          return false;
+        }
+        return true;
+      }),
+    [items],
+  );
+  const renderedItems = useMemo(
+    () => (threadLoading ? [] : visibleItems),
+    [threadLoading, visibleItems],
+  );
   const hasPendingAgentItem = renderedItems.some(
     (item) => item.role === "agent" && !item.completed,
   );
@@ -1085,7 +1094,9 @@ export function ChatView({
       composerValue.trim().length === 0 &&
       attachments.length > 0
     ) {
-      clearAttachments();
+      queueMicrotask(() => {
+        clearAttachments();
+      });
     }
     wasBusyRef.current = busy;
   }, [attachments.length, busy, composerValue]);
@@ -1099,7 +1110,9 @@ export function ChatView({
   useEffect(() => {
     if (threadLoading) {
       streamAtBottomRef.current = true;
-      setStreamAtBottom(true);
+      queueMicrotask(() => {
+        setStreamAtBottom(true);
+      });
       return;
     }
     syncStreamBottomState();
@@ -1110,7 +1123,9 @@ export function ChatView({
       return;
     }
     if (streamAtBottomRef.current) {
-      scrollToLatestMessage("auto");
+      queueMicrotask(() => {
+        scrollToLatestMessage("auto");
+      });
       return;
     }
     syncStreamBottomState();

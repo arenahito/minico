@@ -408,10 +408,7 @@ mod tests {
         let message = json!({"id":11});
         let error = RpcClient::dispatch_incoming(message, &pending, &event_tx)
             .expect_err("must fail for malformed response");
-        assert!(matches!(
-            error,
-            super::RpcClientError::InvalidMessage(_)
-        ));
+        assert!(matches!(error, super::RpcClientError::InvalidMessage(_)));
         assert!(!pending.lock().expect("pending lock").contains_key(&11));
         assert!(matches!(
             waiter_rx.recv_timeout(Duration::from_millis(50)),
