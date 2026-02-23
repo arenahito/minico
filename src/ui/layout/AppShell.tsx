@@ -831,6 +831,12 @@ export function AppShell() {
     selectThreadRequestSeqRef.current += 1;
     setLoadingThreadId(null);
     setSelectedThreadCwdOverride(null);
+    setActiveThreadCwd(null);
+    setActiveThreadId(null);
+    dispatchTurn({
+      type: "resetThread",
+      threadId: `pending-thread-${Date.now()}`,
+    });
     setBusy(true);
     try {
       const started = await startThread();

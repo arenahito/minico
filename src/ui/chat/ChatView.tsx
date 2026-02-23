@@ -324,6 +324,7 @@ export function ChatView({
   );
   const showAgentTypingIndicator =
     !threadLoading && Boolean(turnState.activeTurnId) && !hasPendingAgentItem;
+  const showEmptyPlaceholder = renderedItems.length === 0 && !showAgentTypingIndicator;
   const imageAttachments = attachments.filter(
     (attachment) => attachment.kind === "image",
   );
@@ -577,7 +578,10 @@ export function ChatView({
         </div>
       ) : (
         <>
-          <div className="chat-stream" aria-live="polite">
+          <div
+            className={`chat-stream ${showEmptyPlaceholder ? "is-empty" : ""}`}
+            aria-live="polite"
+          >
             {renderedItems.map((item) => {
               const parsedUserMessage =
                 item.role === "user" ? parseMessageAttachmentPrefix(item.text) : null;
@@ -671,8 +675,15 @@ export function ChatView({
                 <p className="typing-label">minico is thinking...</p>
               </article>
             ) : null}
-            {renderedItems.length === 0 && !showAgentTypingIndicator ? (
-              <p className="chat-empty">No streamed items yet. Send a prompt to begin.</p>
+            {showEmptyPlaceholder ? (
+              <div className="chat-empty-placeholder">
+                <img
+                  className="chat-empty-image"
+                  src="/minico500x500.png"
+                  alt="minico"
+                />
+                <p className="chat-empty-bubble">Ask me anything</p>
+              </div>
             ) : null}
           </div>
 
@@ -753,7 +764,7 @@ export function ChatView({
                 event.preventDefault();
                 onSubmitPrompt(composedPrompt);
               }}
-              placeholder="Type a prompt for Codex..."
+              placeholder="Ask me anything"
               rows={4}
             />
             <div className="composer-toolbar">

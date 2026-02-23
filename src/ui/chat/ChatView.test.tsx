@@ -118,7 +118,8 @@ describe("ChatView", () => {
     );
 
     expect(screen.queryByLabelText("minico thinking indicator")).toBeNull();
-    expect(screen.getByText("No streamed items yet. Send a prompt to begin.")).toBeVisible();
+    expect(screen.getByRole("img", { name: "minico" })).toBeVisible();
+    expect(screen.getByText("Ask me anything")).toBeVisible();
   });
 
   it("shows loading status while selected thread is loading", () => {

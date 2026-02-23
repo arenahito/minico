@@ -453,8 +453,19 @@ pre {
   padding-right: var(--space-2);
 }
 
+.chat-stream.is-empty {
+  justify-content: center;
+  align-items: center;
+}
+
+.chat-empty-placeholder {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-4);
+}
+
 .chat-item {
-  border: 1px solid var(--border-default);
+  border: 1px solid color-mix(in srgb, var(--border-default) 70%, var(--fg-default));
   border-radius: 16px;
   background: var(--surface-base);
   padding: var(--space-3);
@@ -477,7 +488,7 @@ pre {
   align-self: flex-end;
   background: color-mix(in srgb, var(--bg-accent) 84%, var(--surface-base));
   color: var(--fg-inverse);
-  border-color: color-mix(in srgb, var(--bg-accent) 60%, black);
+  border-color: color-mix(in srgb, var(--bg-accent) 70%, black);
 }
 
 .chat-item-user .chat-item-meta {
@@ -516,7 +527,7 @@ pre {
   height: 0;
   border-top: 9px solid transparent;
   border-bottom: 9px solid transparent;
-  border-right: 10px solid var(--border-default);
+  border-right: 10px solid color-mix(in srgb, var(--border-default) 70%, var(--fg-default));
 }
 
 .chat-item-agent::after {
@@ -538,7 +549,7 @@ pre {
   width: 28px;
   height: 28px;
   border-radius: 8px;
-  border: 1px solid var(--border-default);
+  border: 1px solid color-mix(in srgb, var(--border-default) 70%, var(--fg-default));
   object-fit: cover;
   background: var(--surface-base);
 }
@@ -707,9 +718,47 @@ pre {
   height: 6px;
 }
 
-.chat-empty {
+.chat-empty-image {
+  width: 100px;
+  height: 100px;
+  opacity: 0.9;
+}
+
+.chat-empty-bubble {
   margin: 0;
-  color: var(--fg-muted);
+  border: 1px solid color-mix(in srgb, var(--border-default) 70%, var(--fg-default));
+  border-radius: 16px;
+  background: var(--surface-base);
+  color: var(--fg-default);
+  font-size: 20px;
+  padding: 14px 18px;
+  position: relative;
+}
+
+.chat-empty-bubble::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -8px;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-bottom: 8px solid color-mix(in srgb, var(--border-default) 70%, var(--fg-default));
+}
+
+.chat-empty-bubble::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -7px;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-bottom: 7px solid var(--surface-base);
 }
 
 .chat-pane-loading {
