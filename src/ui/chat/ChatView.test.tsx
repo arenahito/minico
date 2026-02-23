@@ -18,6 +18,7 @@ function turnState(activeTurnId: string | null): TurnStreamState {
   return {
     activeThreadId: "thread-1",
     activeTurnId,
+    activeAssistantItemId: null,
     orderedItemIds: [],
     itemsById: {},
     completedTurnIds: [],
@@ -191,7 +192,7 @@ describe("ChatView", () => {
       />,
     );
 
-    expect(screen.queryByLabelText("minico thinking indicator")).toBeNull();
+    expect(screen.getByLabelText("minico thinking indicator")).toBeVisible();
     expect(screen.getAllByText("minico is thinking...")).toHaveLength(1);
   });
 

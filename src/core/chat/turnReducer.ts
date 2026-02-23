@@ -12,15 +12,24 @@ export interface TurnStreamItem {
 export interface TurnStreamState {
   activeThreadId: string | null;
   activeTurnId: string | null;
+  activeAssistantItemId: string | null;
   orderedItemIds: string[];
   itemsById: Record<string, TurnStreamItem>;
   completedTurnIds: string[];
 }
 
+type AssistantStreamChannel = "agentMessage" | "reasoning" | "plan";
+type AssistantStreamMode = "append" | "replace";
+
 export type TurnAction =
   | { type: "turnStarted"; threadId: string; turnId: string }
   | { type: "itemStarted"; itemId: string; itemType: string }
-  | { type: "agentMessageDelta"; itemId: string; delta: string }
+  | {
+      type: "assistantDelta";
+      channel: AssistantStreamChannel;
+      text: string;
+      mode: AssistantStreamMode;
+    }
   | { type: "userPromptSubmitted"; threadId: string; itemId: string; text: string }
   | {
       type: "hydrateThreadHistory";
@@ -37,6 +46,7 @@ export type TurnAction =
 export const initialTurnStreamState: TurnStreamState = {
   activeThreadId: null,
   activeTurnId: null,
+  activeAssistantItemId: null,
   orderedItemIds: [],
   itemsById: {},
   completedTurnIds: [],
@@ -75,6 +85,136 @@ function ensureItem(
   };
 }
 
+function ensureActiveAssistantItem(state: TurnStreamState): {
+  state: TurnStreamState;
+  itemId: string;
+} | null {
+  if (!state.activeTurnId) {
+    return null;
+  }
+  const existingItemId = state.activeAssistantItemId;
+  if (existingItemId && state.itemsById[existingItemId]) {
+    return { state, itemId: existingItemId };
+  }
+
+  const itemId = existingItemId ?? `assistant-live-${state.activeTurnId}`;
+  const withItem = ensureItem(state, itemId, "reasoning");
+  if (withItem.activeAssistantItemId === itemId) {
+    return { state: withItem, itemId };
+  }
+  return {
+    state: {
+      ...withItem,
+      activeAssistantItemId: itemId,
+    },
+    itemId,
+  };
+}
+
+function finalizeActiveAssistant(
+  state: TurnStreamState,
+  keepCompleted: boolean,
+): TurnStreamState {
+  if (!state.activeAssistantItemId) {
+    return state;
+  }
+  const assistantItem = state.itemsById[state.activeAssistantItemId];
+  if (!assistantItem) {
+    return {
+      ...state,
+      activeAssistantItemId: null,
+    };
+  }
+  return {
+    ...state,
+    activeAssistantItemId: null,
+    itemsById: {
+      ...state.itemsById,
+      [assistantItem.id]: {
+        ...assistantItem,
+        completed: keepCompleted,
+      },
+    },
+  };
+}
+
+function extractAssistantText(params: Record<string, unknown>): string | null {
+  if (typeof params.delta === "string") {
+    return params.delta;
+  }
+  if (
+    params.delta &&
+    typeof params.delta === "object" &&
+    typeof (params.delta as Record<string, unknown>).text === "string"
+  ) {
+    return (params.delta as Record<string, unknown>).text as string;
+  }
+  if (typeof params.text === "string") {
+    return params.text;
+  }
+  const summary = params.summary;
+  if (Array.isArray(summary)) {
+    const lines = summary.filter((entry): entry is string => typeof entry === "string");
+    if (lines.length > 0) {
+      return lines.join("\n");
+    }
+  }
+  const item = params.item as Record<string, unknown> | undefined;
+  if (!item) {
+    return null;
+  }
+  if (typeof item.text === "string") {
+    return item.text;
+  }
+  const itemSummary = item.summary;
+  if (Array.isArray(itemSummary)) {
+    const lines = itemSummary
+      .map((entry) => {
+        if (typeof entry === "string") {
+          return entry;
+        }
+        if (
+          entry &&
+          typeof entry === "object" &&
+          typeof (entry as Record<string, unknown>).text === "string"
+        ) {
+          return (entry as Record<string, unknown>).text as string;
+        }
+        return null;
+      })
+      .filter((entry): entry is string => typeof entry === "string");
+    if (lines.length > 0) {
+      return lines.join("\n");
+    }
+  }
+  return null;
+}
+
+function assistantMetaFromMethod(
+  method: string,
+): { channel: AssistantStreamChannel; mode: AssistantStreamMode } | null {
+  if (method === "item/agentMessage/delta") {
+    return { channel: "agentMessage", mode: "append" };
+  }
+
+  const match = method.match(/^item\/([^/]+)\/delta$/);
+  if (!match) {
+    return null;
+  }
+
+  const channel = match[1]?.toLowerCase() ?? "";
+  if (channel.includes("agentmessage")) {
+    return { channel: "agentMessage", mode: "append" };
+  }
+  if (channel.includes("reasoning")) {
+    return { channel: "reasoning", mode: "replace" };
+  }
+  if (channel.includes("plan")) {
+    return { channel: "plan", mode: "replace" };
+  }
+  return null;
+}
+
 export function reduceTurnStream(
   state: TurnStreamState,
   action: TurnAction,
@@ -87,9 +227,10 @@ export function reduceTurnStream(
       };
     case "turnStarted":
       return {
-        ...state,
+        ...finalizeActiveAssistant(state, true),
         activeThreadId: action.threadId,
         activeTurnId: action.turnId,
+        activeAssistantItemId: null,
       };
     case "hydrateThreadHistory": {
       const itemsById: TurnStreamState["itemsById"] = {};
@@ -108,6 +249,7 @@ export function reduceTurnStream(
       return {
         activeThreadId: action.threadId,
         activeTurnId: null,
+        activeAssistantItemId: null,
         orderedItemIds,
         itemsById,
         completedTurnIds: [],
@@ -115,16 +257,26 @@ export function reduceTurnStream(
     }
     case "itemStarted":
       return ensureItem(state, action.itemId, action.itemType);
-    case "agentMessageDelta": {
-      const withItem = ensureItem(state, action.itemId, "agentMessage");
-      const current = withItem.itemsById[action.itemId];
+    case "assistantDelta": {
+      const ensured = ensureActiveAssistantItem(state);
+      if (!ensured) {
+        return state;
+      }
+      const current = ensured.state.itemsById[ensured.itemId];
+      const nextText =
+        action.mode === "append" &&
+        action.channel === "agentMessage" &&
+        current.itemType === "agentMessage"
+          ? `${current.text}${action.text}`
+          : action.text;
       return {
-        ...withItem,
+        ...ensured.state,
         itemsById: {
-          ...withItem.itemsById,
-          [action.itemId]: {
+          ...ensured.state.itemsById,
+          [ensured.itemId]: {
             ...current,
-            text: `${current.text}${action.delta}`,
+            itemType: action.channel,
+            text: nextText,
           },
         },
       };
@@ -166,21 +318,27 @@ export function reduceTurnStream(
       };
     }
     case "turnCompleted":
-      return {
-        ...state,
-        activeThreadId: action.threadId,
-        activeTurnId:
-          state.activeTurnId === action.turnId ? null : state.activeTurnId,
-        completedTurnIds: state.completedTurnIds.includes(action.turnId)
-          ? state.completedTurnIds
-          : [...state.completedTurnIds, action.turnId],
-      };
+      return finalizeActiveAssistant(
+        {
+          ...state,
+          activeThreadId: action.threadId,
+          activeTurnId:
+            state.activeTurnId === action.turnId ? null : state.activeTurnId,
+          completedTurnIds: state.completedTurnIds.includes(action.turnId)
+            ? state.completedTurnIds
+            : [...state.completedTurnIds, action.turnId],
+        },
+        true,
+      );
     case "turnInterrupted":
-      return {
-        ...state,
-        activeTurnId:
-          state.activeTurnId === action.turnId ? null : state.activeTurnId,
-      };
+      return finalizeActiveAssistant(
+        {
+          ...state,
+          activeTurnId:
+            state.activeTurnId === action.turnId ? null : state.activeTurnId,
+        },
+        true,
+      );
     default:
       return state;
   }
@@ -208,23 +366,71 @@ export function eventToTurnAction(
     if (!item || typeof item.id !== "string") {
       return null;
     }
-    return {
-      type: "itemStarted",
-      itemId: item.id,
-      itemType: typeof item.type === "string" ? item.type : "unknown",
-    };
-  }
-
-  if (event.method === "item/agentMessage/delta") {
-    const itemId = params.itemId;
-    const delta = params.delta;
-    if (typeof itemId !== "string" || typeof delta !== "string") {
+    const itemType = typeof item.type === "string" ? item.type : "unknown";
+    const itemTypeLower = itemType.toLowerCase();
+    if (
+      itemTypeLower.includes("agentmessage") ||
+      itemTypeLower.includes("reasoning") ||
+      itemTypeLower.includes("plan")
+    ) {
+      const assistantText = extractAssistantText(params);
+      if (
+        assistantText !== null &&
+        (itemTypeLower.includes("reasoning") || itemTypeLower.includes("plan"))
+      ) {
+        return {
+          type: "assistantDelta",
+          channel: itemTypeLower.includes("plan") ? "plan" : "reasoning",
+          text: assistantText,
+          mode: "replace",
+        };
+      }
       return null;
     }
     return {
-      type: "agentMessageDelta",
-      itemId,
-      delta,
+      type: "itemStarted",
+      itemId: item.id,
+      itemType,
+    };
+  }
+
+  const assistantMeta = assistantMetaFromMethod(event.method);
+  if (assistantMeta) {
+    const text = extractAssistantText(params);
+    if (typeof text !== "string" || text.length === 0) {
+      return null;
+    }
+    return {
+      type: "assistantDelta",
+      channel: assistantMeta.channel,
+      text,
+      mode: assistantMeta.mode,
+    };
+  }
+
+  if (event.method === "item/updated") {
+    const item = params.item as { type?: unknown } | undefined;
+    const itemType = typeof item?.type === "string" ? item.type.toLowerCase() : "";
+    if (
+      !itemType.includes("reasoning") &&
+      !itemType.includes("plan") &&
+      !itemType.includes("agentmessage")
+    ) {
+      return null;
+    }
+    const text = extractAssistantText(params);
+    if (typeof text !== "string" || text.length === 0) {
+      return null;
+    }
+    return {
+      type: "assistantDelta",
+      channel: itemType.includes("plan")
+        ? "plan"
+        : itemType.includes("reasoning")
+          ? "reasoning"
+          : "agentMessage",
+      text,
+      mode: "replace",
     };
   }
 

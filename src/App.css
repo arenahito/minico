@@ -481,7 +481,12 @@ pre {
 }
 
 .chat-item-user .chat-item-meta {
+  justify-content: flex-end;
   color: color-mix(in srgb, var(--fg-inverse) 80%, #2d5870);
+}
+
+.chat-item-agent .chat-item-meta {
+  justify-content: flex-start;
 }
 
 .chat-item-user::after {
@@ -691,6 +696,15 @@ pre {
   margin: 0;
   font-size: 0.78rem;
   color: var(--fg-muted);
+}
+
+.typing-dots-inline {
+  margin-bottom: 0;
+}
+
+.typing-dots-inline span {
+  width: 6px;
+  height: 6px;
 }
 
 .chat-empty {

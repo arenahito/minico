@@ -310,6 +310,9 @@ export function ChatView({
     if (item.role === "user" && text.length === 0) {
       return false;
     }
+    if (item.role === "agent" && text.length === 0) {
+      return false;
+    }
     if (item.completed && text.length === 0) {
       return false;
     }
@@ -641,6 +644,13 @@ export function ChatView({
                   )}
                   {!item.completed ? (
                     <footer className="chat-item-meta">
+                      {item.role === "agent" ? (
+                        <span className="typing-dots typing-dots-inline" aria-hidden="true">
+                          <span />
+                          <span />
+                          <span />
+                        </span>
+                      ) : null}
                       <span className="chat-item-state">minico is thinking...</span>
                     </footer>
                   ) : null}

@@ -35,25 +35,55 @@ describe("turnReducer", () => {
     expect(action).toBeNull();
   });
 
+  it("maps reasoning delta notification into assistant update action", () => {
+    const action = eventToTurnAction({
+      kind: "notification",
+      method: "item/reasoning/delta",
+      params: {
+        itemId: "item-reasoning-1",
+        delta: "候補を比較中",
+      },
+    });
+
+    expect(action).toEqual({
+      type: "assistantDelta",
+      channel: "reasoning",
+      text: "候補を比較中",
+      mode: "replace",
+    });
+  });
+
+  it("ignores agent item started notification to avoid duplicate bubble", () => {
+    const action = eventToTurnAction({
+      kind: "notification",
+      method: "item/started",
+      params: {
+        item: {
+          id: "item-agent-1",
+          type: "agentMessage",
+        },
+      },
+    });
+
+    expect(action).toBeNull();
+  });
+
   it("applies streaming delta flow in order", () => {
     const turnStarted = reduceTurnStream(initialTurnStreamState, {
       type: "turnStarted",
       threadId: "thread-1",
       turnId: "turn-1",
     });
-    const itemStarted = reduceTurnStream(turnStarted, {
-      type: "itemStarted",
-      itemId: "item-1",
-      itemType: "agentMessage",
-    });
-    const withDelta = reduceTurnStream(itemStarted, {
-      type: "agentMessageDelta",
-      itemId: "item-1",
-      delta: "hello",
+    const withDelta = reduceTurnStream(turnStarted, {
+      type: "assistantDelta",
+      channel: "agentMessage",
+      text: "hello",
+      mode: "append",
     });
     const completed = reduceTurnStream(withDelta, {
-      type: "itemCompleted",
-      itemId: "item-1",
+      type: "turnCompleted",
+      threadId: "thread-1",
+      turnId: "turn-1",
     });
 
     const items = orderedTurnItems(completed);
@@ -62,6 +92,38 @@ describe("turnReducer", () => {
     expect(items[0].role).toBe("agent");
     expect(typeof items[0].createdAt).toBe("number");
     expect(items[0].completed).toBe(true);
+  });
+
+  it("overwrites reasoning text with first agent output and then appends deltas", () => {
+    const turnStarted = reduceTurnStream(initialTurnStreamState, {
+      type: "turnStarted",
+      threadId: "thread-1",
+      turnId: "turn-1",
+    });
+    const withReasoning = reduceTurnStream(turnStarted, {
+      type: "assistantDelta",
+      channel: "reasoning",
+      text: "候補を比較中",
+      mode: "replace",
+    });
+    const withFirstAgentDelta = reduceTurnStream(withReasoning, {
+      type: "assistantDelta",
+      channel: "agentMessage",
+      text: "回答です",
+      mode: "append",
+    });
+    const withSecondAgentDelta = reduceTurnStream(withFirstAgentDelta, {
+      type: "assistantDelta",
+      channel: "agentMessage",
+      text: "。",
+      mode: "append",
+    });
+
+    const items = orderedTurnItems(withSecondAgentDelta);
+    expect(items).toHaveLength(1);
+    expect(items[0].itemType).toBe("agentMessage");
+    expect(items[0].text).toBe("回答です。");
+    expect(items[0].completed).toBe(false);
   });
 
   it("adds submitted user prompt as completed user item", () => {
