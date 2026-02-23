@@ -79,6 +79,7 @@ This file defines repository-specific guardrails for all agents working on `mini
 
 - After implementing changes, running `pnpm verify` is mandatory before handoff.
 - Add or update tests for behavior changes, not only happy paths.
+- For Rust tests with platform-gated code (`#[cfg(windows)]`, etc.), gate related test imports the same way or keep them function-local so `cargo clippy --all-targets -D warnings` passes on Linux CI.
 - Include coverage for:
   - auth state recovery
   - poll overlap guard behavior

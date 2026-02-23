@@ -194,14 +194,21 @@ impl AppServerProcess {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(windows)]
     use std::collections::HashMap;
+    #[cfg(windows)]
     use std::fs;
+    #[cfg(windows)]
     use std::time::Duration;
 
+    #[cfg(windows)]
     use serde_json::json;
+    #[cfg(windows)]
     use tempfile::TempDir;
 
-    use super::{AppServerCommand, AppServerProcess};
+    use super::AppServerCommand;
+    #[cfg(windows)]
+    use super::AppServerProcess;
 
     #[test]
     fn uses_path_lookup_when_codex_path_is_missing() {
