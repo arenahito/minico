@@ -114,6 +114,20 @@ fn extract_turn_id(payload: &Value) -> Option<String> {
         .map(ToString::to_string)
 }
 
+fn extract_cwd(payload: &Value) -> Option<String> {
+    payload
+        .get("cwd")
+        .and_then(Value::as_str)
+        .map(ToString::to_string)
+        .or_else(|| {
+            payload
+                .get("thread")
+                .and_then(|thread| thread.get("cwd"))
+                .and_then(Value::as_str)
+                .map(ToString::to_string)
+        })
+}
+
 fn parse_thread_list(payload: &Value) -> ThreadListResult {
     let threads = payload
         .get("data")
@@ -358,9 +372,10 @@ pub async fn thread_start(
             .map_err(|error| error.to_string())?;
         let thread_id = extract_thread_id(&payload)
             .ok_or_else(|| "thread/start response did not include thread.id".to_string())?;
+        let resolved_cwd = extract_cwd(&payload).unwrap_or_else(|| cwd.cwd.clone());
         Ok(ThreadSessionResult {
             thread_id,
-            cwd: cwd.cwd.clone(),
+            cwd: resolved_cwd,
             workspace_fallback_used: cwd.fallback_used,
             workspace_warning: cwd.warning.clone(),
             history_items: vec![],
@@ -375,17 +390,18 @@ pub async fn thread_resume(
     thread_id: String,
 ) -> Result<ThreadSessionResult, String> {
     run_with_facade(&state, move |facade| {
-        let cwd = resolve_active_cwd()?;
         let payload = facade
             .thread_resume(&thread_id)
             .map_err(|error| error.to_string())?;
         let resolved_thread_id = extract_thread_id(&payload).unwrap_or_else(|| thread_id.clone());
         let history_items = parse_thread_history_items(&payload);
+        let resolved_cwd = extract_cwd(&payload)
+            .ok_or_else(|| "thread/resume response did not include cwd".to_string())?;
         Ok(ThreadSessionResult {
             thread_id: resolved_thread_id,
-            cwd: cwd.cwd.clone(),
-            workspace_fallback_used: cwd.fallback_used,
-            workspace_warning: cwd.warning.clone(),
+            cwd: resolved_cwd,
+            workspace_fallback_used: false,
+            workspace_warning: None,
             history_items,
         })
     })
@@ -400,6 +416,8 @@ pub async fn turn_start(
     model: Option<String>,
     effort: Option<String>,
     personality: Option<String>,
+    current_cwd: Option<String>,
+    override_cwd: Option<String>,
 ) -> Result<TurnStartResult, String> {
     let trimmed = text.trim().to_string();
     if trimmed.is_empty() {
@@ -407,7 +425,6 @@ pub async fn turn_start(
     }
 
     run_with_facade(&state, move |facade| {
-        let cwd = resolve_active_cwd()?;
         let payload = facade
             .turn_start(
                 &thread_id,
@@ -415,15 +432,19 @@ pub async fn turn_start(
                 model.as_deref(),
                 effort.as_deref(),
                 personality.as_deref(),
-                &cwd.cwd,
+                override_cwd.as_deref(),
             )
             .map_err(|error| error.to_string())?;
+        let resolved_cwd = extract_cwd(&payload)
+            .or_else(|| override_cwd.clone())
+            .or(current_cwd)
+            .ok_or_else(|| "turn/start response did not include cwd".to_string())?;
         Ok(TurnStartResult {
             thread_id,
             turn_id: extract_turn_id(&payload),
-            cwd: cwd.cwd.clone(),
-            workspace_fallback_used: cwd.fallback_used,
-            workspace_warning: cwd.warning.clone(),
+            cwd: resolved_cwd,
+            workspace_fallback_used: false,
+            workspace_warning: None,
         })
     })
     .await
@@ -545,7 +566,7 @@ mod tests {
     use tempfile::TempDir;
 
     use super::{
-        extract_thread_id, extract_turn_id, filter_diagnostics_lines, parse_model_list,
+        extract_cwd, extract_thread_id, extract_turn_id, filter_diagnostics_lines, parse_model_list,
         parse_thread_history_items,
         parse_thread_list,
         write_diagnostics_log,
@@ -570,6 +591,14 @@ mod tests {
             }
         });
         assert_eq!(extract_turn_id(&payload).as_deref(), Some("turn-42"));
+    }
+
+    #[test]
+    fn extracts_cwd_from_top_level_or_thread_payload() {
+        let top_level = json!({ "cwd": "C:/workspace/top" });
+        let nested = json!({ "thread": { "cwd": "C:/workspace/thread" } });
+        assert_eq!(extract_cwd(&top_level).as_deref(), Some("C:/workspace/top"));
+        assert_eq!(extract_cwd(&nested).as_deref(), Some("C:/workspace/thread"));
     }
 
     #[test]

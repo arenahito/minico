@@ -175,7 +175,7 @@ impl<R: RpcRuntime> CodexFacade<R> {
         model: Option<&str>,
         effort: Option<&str>,
         personality: Option<&str>,
-        cwd: &str,
+        cwd: Option<&str>,
     ) -> Result<Value, CodexFacadeError> {
         let model = model
             .map(str::trim)
@@ -189,18 +189,25 @@ impl<R: RpcRuntime> CodexFacade<R> {
             .map(str::trim)
             .filter(|value| matches!(*value, "friendly" | "pragmatic" | "none"))
             .map(ToString::to_string);
+        let cwd = cwd
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string);
+        let mut params = json!({
+            "threadId": thread_id,
+            "model": model,
+            "effort": effort,
+            "personality": personality,
+            "input": [
+                { "type": "text", "text": text }
+            ]
+        });
+        if let Some(value) = cwd {
+            params["cwd"] = json!(value);
+        }
         self.request_json(
             "turn/start",
-            json!({
-                "threadId": thread_id,
-                "cwd": cwd,
-                "model": model,
-                "effort": effort,
-                "personality": personality,
-                "input": [
-                    { "type": "text", "text": text }
-                ]
-            }),
+            params,
         )
     }
 

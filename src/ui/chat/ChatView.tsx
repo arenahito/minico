@@ -10,7 +10,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { open } from "@tauri-apps/plugin-dialog";
 import type { TurnStreamItem, TurnStreamState } from "../../core/chat/turnReducer";
-import { ChevronDown, ListPlus, Paperclip, Send, Square, X } from "lucide-react";
+import { ChevronDown, FolderOpen, ListPlus, Paperclip, Send, Square, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -23,7 +23,8 @@ interface ChatViewProps {
   turnState: TurnStreamState;
   items: TurnStreamItem[];
   threadLoading: boolean;
-  workspacePath: string | null;
+  threadCwd: string | null;
+  selectedThreadPath?: string | null;
   composerValue: string;
   selectorLabel: string;
   selectorDisplay: string;
@@ -33,6 +34,7 @@ interface ChatViewProps {
   onComposerChange: (nextValue: string) => void;
   onSelectorChange: (nextValue: string) => boolean;
   onCreateThread: () => void;
+  onSelectThreadPath?: (nextPath: string) => void;
   onSubmitPrompt: (composedPrompt: string) => void;
   onInterrupt: () => void;
 }
@@ -266,7 +268,8 @@ export function ChatView({
   turnState,
   items,
   threadLoading,
-  workspacePath,
+  threadCwd,
+  selectedThreadPath = null,
   composerValue,
   selectorLabel,
   selectorDisplay,
@@ -276,6 +279,7 @@ export function ChatView({
   onComposerChange,
   onSelectorChange,
   onCreateThread,
+  onSelectThreadPath,
   onSubmitPrompt,
   onInterrupt,
 }: ChatViewProps) {
@@ -297,6 +301,10 @@ export function ChatView({
     return `${tokens.join(" ")} ${prompt}`;
   }, [attachments, composerValue]);
   const canSubmit = !busy && composedPrompt.trim().length > 0;
+  const resolvedThreadCwd = threadCwd ?? "(resolving cwd...)";
+  const displayedThreadCwd = selectedThreadPath
+    ? `${selectedThreadPath} (${resolvedThreadCwd})`
+    : resolvedThreadCwd;
   const visibleItems = items.filter((item) => {
     const text = item.text.trim();
     if (item.role === "user" && text.length === 0) {
@@ -368,6 +376,39 @@ export function ChatView({
       appendAttachmentsFromSelections(selections);
     } catch (error) {
       console.warn("file picker failed", error);
+    }
+  }
+
+  async function handlePickThreadPath(): Promise<void> {
+    if (!onSelectThreadPath) {
+      return;
+    }
+    const defaultThreadPath =
+      selectedThreadPath?.trim().length
+        ? selectedThreadPath.trim()
+        : threadCwd?.trim().length
+          ? threadCwd.trim()
+          : undefined;
+    try {
+      const picked = await open({
+        directory: true,
+        multiple: false,
+        defaultPath: defaultThreadPath,
+      });
+      if (!picked) {
+        return;
+      }
+      const selected = Array.isArray(picked) ? picked[0] : picked;
+      if (typeof selected !== "string") {
+        return;
+      }
+      const normalized = selected.trim();
+      if (normalized.length === 0) {
+        return;
+      }
+      onSelectThreadPath(normalized);
+    } catch (error) {
+      console.warn("thread path picker failed", error);
     }
   }
 
@@ -622,9 +663,20 @@ export function ChatView({
           </div>
 
           <div className="composer">
-            <p className="chat-turn-cwd" title={workspacePath ?? ""}>
-              <code>{workspacePath ?? "(resolving cwd...)"}</code>
-            </p>
+            <div className="chat-turn-cwd-row">
+              <button
+                type="button"
+                className="icon-button icon-button-muted chat-turn-cwd-picker"
+                onClick={() => void handlePickThreadPath()}
+                aria-label="Select thread cwd"
+                title="Select thread cwd"
+              >
+                <FolderOpen size={16} aria-hidden="true" />
+              </button>
+              <p className="chat-turn-cwd" title={displayedThreadCwd}>
+                <code>{displayedThreadCwd}</code>
+              </p>
+            </div>
             {imageAttachments.length > 0 ? (
               <div className="composer-image-attachments" aria-label="Image attachments">
                 {imageAttachments.map((attachment) => (

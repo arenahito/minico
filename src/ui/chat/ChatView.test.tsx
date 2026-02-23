@@ -75,7 +75,7 @@ describe("ChatView", () => {
         turnState={turnState("turn-1")}
         items={[]}
         threadLoading={false}
-        workspacePath="C:/workspace/demo"
+        threadCwd="C:/workspace/demo"
         composerValue=""
         selectorLabel="Select model"
         selectorDisplay="gpt-5 / medium"
@@ -101,7 +101,7 @@ describe("ChatView", () => {
         turnState={turnState(null)}
         items={[]}
         threadLoading={false}
-        workspacePath="C:/workspace/demo"
+        threadCwd="C:/workspace/demo"
         composerValue=""
         selectorLabel="Select model"
         selectorDisplay="gpt-5 / medium"
@@ -126,7 +126,7 @@ describe("ChatView", () => {
         turnState={turnState(null)}
         items={[item({ text: "stale response" })]}
         threadLoading
-        workspacePath="C:/workspace/demo"
+        threadCwd="C:/workspace/demo"
         composerValue=""
         selectorLabel="Select model"
         selectorDisplay="gpt-5 / medium"
@@ -151,7 +151,7 @@ describe("ChatView", () => {
         turnState={turnState("turn-2")}
         items={[item({ text: "existing response" })]}
         threadLoading={false}
-        workspacePath="C:/workspace/demo"
+        threadCwd="C:/workspace/demo"
         composerValue=""
         selectorLabel="Select model"
         selectorDisplay="gpt-5 / medium"
@@ -176,7 +176,7 @@ describe("ChatView", () => {
         turnState={turnState("turn-3")}
         items={[item({ completed: false, text: "" })]}
         threadLoading={false}
-        workspacePath="C:/workspace/demo"
+        threadCwd="C:/workspace/demo"
         composerValue=""
         selectorLabel="Select model"
         selectorDisplay="gpt-5 / medium"
@@ -205,7 +205,7 @@ describe("ChatView", () => {
           }),
         ]}
         threadLoading={false}
-        workspacePath="C:/workspace/demo"
+        threadCwd="C:/workspace/demo"
         composerValue=""
         selectorLabel="Select model"
         selectorDisplay="gpt-5 / medium"
@@ -234,7 +234,7 @@ describe("ChatView", () => {
         turnState={turnState(null)}
         items={[]}
         threadLoading={false}
-        workspacePath="C:/workspace/demo"
+        threadCwd="C:/workspace/demo"
         composerValue="hello"
         selectorLabel="Select model"
         selectorDisplay="gpt-5 / medium"
@@ -261,7 +261,7 @@ describe("ChatView", () => {
         turnState={turnState(null)}
         items={[]}
         threadLoading={false}
-        workspacePath="C:/workspace/demo"
+        threadCwd="C:/workspace/demo"
         composerValue="   "
         selectorLabel="Select model"
         selectorDisplay="gpt-5 / medium"
@@ -280,6 +280,73 @@ describe("ChatView", () => {
     expect(onSubmitPrompt).not.toHaveBeenCalled();
   });
 
+  it("shows selected thread path with current thread cwd and emits folder selection", async () => {
+    openMock.mockResolvedValueOnce("D:\\work\\override");
+    const onSelectThreadPath = vi.fn();
+    render(
+      <ChatView
+        turnState={turnState(null)}
+        items={[]}
+        threadLoading={false}
+        threadCwd="C:/workspace/demo"
+        selectedThreadPath="D:/work/override"
+        composerValue=""
+        selectorLabel="Select model"
+        selectorDisplay="gpt-5 / medium"
+        selectorOptions={[{ value: "gpt-5", label: "gpt-5" }]}
+        selectorValue="gpt-5"
+        busy={false}
+        onComposerChange={vi.fn()}
+        onSelectorChange={vi.fn(() => true)}
+        onCreateThread={vi.fn()}
+        onSelectThreadPath={onSelectThreadPath}
+        onSubmitPrompt={vi.fn()}
+        onInterrupt={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("D:/work/override (C:/workspace/demo)")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Select thread cwd" }));
+    expect(openMock).toHaveBeenCalledWith({
+      directory: true,
+      multiple: false,
+      defaultPath: "D:/work/override",
+    });
+    await waitFor(() => {
+      expect(onSelectThreadPath).toHaveBeenCalledWith("D:\\work\\override");
+    });
+  });
+
+  it("uses thread cwd as default folder when selected thread path is not set", () => {
+    render(
+      <ChatView
+        turnState={turnState(null)}
+        items={[]}
+        threadLoading={false}
+        threadCwd="C:/workspace/demo"
+        composerValue=""
+        selectorLabel="Select model"
+        selectorDisplay="gpt-5 / medium"
+        selectorOptions={[{ value: "gpt-5", label: "gpt-5" }]}
+        selectorValue="gpt-5"
+        busy={false}
+        onComposerChange={vi.fn()}
+        onSelectorChange={vi.fn(() => true)}
+        onCreateThread={vi.fn()}
+        onSelectThreadPath={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+        onInterrupt={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Select thread cwd" }));
+    expect(openMock).toHaveBeenCalledWith({
+      directory: true,
+      multiple: false,
+      defaultPath: "C:/workspace/demo",
+    });
+  });
+
   it("renders inline path block for non-image attachment and allows removing it", async () => {
     openMock.mockResolvedValueOnce(["C:\\work\\readme.md"]);
     render(
@@ -287,7 +354,7 @@ describe("ChatView", () => {
         turnState={turnState(null)}
         items={[]}
         threadLoading={false}
-        workspacePath="C:/workspace/demo"
+        threadCwd="C:/workspace/demo"
         composerValue="note"
         selectorLabel="Select model"
         selectorDisplay="gpt-5 / medium"
@@ -317,7 +384,7 @@ describe("ChatView", () => {
         turnState={turnState(null)}
         items={[]}
         threadLoading={false}
-        workspacePath="C:/workspace/demo"
+        threadCwd="C:/workspace/demo"
         composerValue=""
         selectorLabel="Select model"
         selectorDisplay="gpt-5 / medium"
@@ -349,7 +416,7 @@ describe("ChatView", () => {
         turnState={turnState(null)}
         items={[]}
         threadLoading={false}
-        workspacePath="C:/workspace/demo"
+        threadCwd="C:/workspace/demo"
         composerValue="test prompt"
         selectorLabel="Select model"
         selectorDisplay="gpt-5 / medium"
@@ -387,7 +454,7 @@ describe("ChatView", () => {
           }),
         ]}
         threadLoading={false}
-        workspacePath="C:/workspace/demo"
+        threadCwd="C:/workspace/demo"
         composerValue=""
         selectorLabel="Select model"
         selectorDisplay="gpt-5 / medium"
@@ -415,7 +482,7 @@ describe("ChatView", () => {
         turnState={turnState(null)}
         items={[]}
         threadLoading={false}
-        workspacePath="C:/workspace/demo"
+        threadCwd="C:/workspace/demo"
         composerValue=""
         selectorLabel="Select model"
         selectorDisplay="gpt-5 / medium"
@@ -447,7 +514,7 @@ describe("ChatView", () => {
         turnState={turnState(null)}
         items={[]}
         threadLoading={false}
-        workspacePath="C:/workspace/demo"
+        threadCwd="C:/workspace/demo"
         composerValue="drop test"
         selectorLabel="Select model"
         selectorDisplay="gpt-5 / medium"

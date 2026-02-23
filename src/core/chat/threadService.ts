@@ -118,6 +118,8 @@ export async function startTurn(
   model: string | null,
   effort: ReasoningEffort | null,
   personality: CodexPersonality,
+  currentCwd: string | null,
+  overrideCwd: string | null,
 ): Promise<TurnStartResult> {
   return invoke<TurnStartResult>("turn_start", {
     threadId,
@@ -125,6 +127,8 @@ export async function startTurn(
     model,
     effort,
     personality,
+    currentCwd,
+    overrideCwd,
   });
 }
 

@@ -14,6 +14,7 @@ const persistThreadPanelWidthRecord = vi.fn().mockResolvedValue(undefined);
 const loadModelPreferenceRecord = vi.fn().mockResolvedValue(null);
 const persistModelPreferenceRecord = vi.fn().mockResolvedValue(undefined);
 const openUrl = vi.fn().mockResolvedValue(undefined);
+const openDialog = vi.fn();
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -21,6 +22,10 @@ vi.mock("@tauri-apps/api/core", () => ({
 
 vi.mock("@tauri-apps/plugin-opener", () => ({
   openUrl: (...args: unknown[]) => openUrl(...args),
+}));
+
+vi.mock("@tauri-apps/plugin-dialog", () => ({
+  open: (...args: unknown[]) => openDialog(...args),
 }));
 
 vi.mock("../../core/window/windowStateClient", () => ({
@@ -77,6 +82,7 @@ describe("AppShell", () => {
     loadModelPreferenceRecord.mockResolvedValue(null);
     persistModelPreferenceRecord.mockClear();
     openUrl.mockClear();
+    openDialog.mockReset();
   });
 
   it("renders login-required branch", async () => {
@@ -148,13 +154,6 @@ describe("AppShell", () => {
           threads: [{ id: "thread-1", name: null, preview: "demo thread" }],
         };
       }
-      if (command === "workspace_resolve_active_cwd") {
-        return {
-          cwd: "C:/workspace/demo",
-          fallbackUsed: false,
-          warning: null,
-        };
-      }
       if (command === "session_poll_events") {
         pollCount += 1;
         if (pollCount === 1) {
@@ -177,7 +176,7 @@ describe("AppShell", () => {
     const { unmount } = render(<AppShell />);
 
     await waitFor(() => {
-      expect(screen.getByText("C:/workspace/demo")).toBeVisible();
+      expect(screen.getByText("(resolving cwd...)")).toBeVisible();
       expect(screen.getByLabelText("minico thinking indicator")).toBeVisible();
     });
 
@@ -382,18 +381,11 @@ describe("AppShell", () => {
           ],
         };
       }
-      if (command === "workspace_resolve_active_cwd") {
-        return {
-          cwd: "C:/workspace/demo",
-          fallbackUsed: false,
-          warning: null,
-        };
-      }
       if (command === "thread_resume") {
         expect(args).toEqual({ threadId: "thread-2" });
         return {
           threadId: "thread-2",
-          cwd: "C:/workspace/demo",
+          cwd: "C:/workspace/thread-2",
           workspaceFallbackUsed: false,
           workspaceWarning: null,
           historyItems: [
@@ -415,7 +407,18 @@ describe("AppShell", () => {
         };
       }
       if (command === "model_list") {
-        return { models: [] };
+        return {
+          models: [
+            {
+              id: "m1",
+              model: "gpt-5",
+              displayName: "gpt-5",
+              isDefault: true,
+              defaultReasoningEffort: "medium",
+              supportedReasoningEfforts: ["low", "medium", "high"],
+            },
+          ],
+        };
       }
       if (command === "session_poll_events") {
         return [];
@@ -442,6 +445,7 @@ describe("AppShell", () => {
     await waitFor(() => {
       expect(screen.getByText("question")).toBeVisible();
       expect(screen.getByText("answer")).toBeVisible();
+      expect(screen.getByText("C:/workspace/thread-2")).toBeVisible();
     });
   });
 
@@ -467,19 +471,23 @@ describe("AppShell", () => {
           ],
         };
       }
-      if (command === "workspace_resolve_active_cwd") {
-        return {
-          cwd: "C:/workspace/demo",
-          fallbackUsed: false,
-          warning: null,
-        };
-      }
       if (command === "thread_resume") {
         expect(args).toEqual({ threadId: "thread-2" });
         return resumeDeferred.promise;
       }
       if (command === "model_list") {
-        return { models: [] };
+        return {
+          models: [
+            {
+              id: "m1",
+              model: "gpt-5",
+              displayName: "gpt-5",
+              isDefault: true,
+              defaultReasoningEffort: "medium",
+              supportedReasoningEfforts: ["low", "medium", "high"],
+            },
+          ],
+        };
       }
       if (command === "session_poll_events") {
         return [];
@@ -500,7 +508,7 @@ describe("AppShell", () => {
 
     resumeDeferred.resolve({
       threadId: "thread-2",
-      cwd: "C:/workspace/demo",
+      cwd: "C:/workspace/thread-2",
       workspaceFallbackUsed: false,
       workspaceWarning: null,
       historyItems: [
@@ -524,6 +532,7 @@ describe("AppShell", () => {
     await waitFor(() => {
       expect(screen.getByText("follow-up")).toBeVisible();
       expect(screen.getByText("resolved")).toBeVisible();
+      expect(screen.getByText("C:/workspace/thread-2")).toBeVisible();
     });
   });
 
@@ -564,13 +573,6 @@ describe("AppShell", () => {
           ],
         };
       }
-      if (command === "workspace_resolve_active_cwd") {
-        return {
-          cwd: "C:/workspace/demo",
-          fallbackUsed: false,
-          warning: null,
-        };
-      }
       if (command === "thread_start") {
         return {
           threadId: "thread-1",
@@ -595,9 +597,7 @@ describe("AppShell", () => {
     });
 
     render(<AppShell />);
-    await waitFor(() => {
-      expect(screen.getByText("C:/workspace/demo")).toBeVisible();
-    });
+    await screen.findByRole("button", { name: "Select model" });
 
     await user.click(screen.getByRole("button", { name: "Select model" }));
     await user.click(screen.getByRole("option", { name: "GPT-5 mini" }));
@@ -613,6 +613,81 @@ describe("AppShell", () => {
         model: "gpt-5-mini",
         effort: "high",
         personality: "friendly",
+        currentCwd: "C:/workspace/demo",
+        overrideCwd: null,
+      });
+    });
+  });
+
+  it("applies selected thread path as cwd override on next turn", async () => {
+    const user = userEvent.setup();
+    openDialog.mockResolvedValueOnce("D:/work/override");
+    mockedInvoke.mockImplementation(async (command) => {
+      if (command === "auth_read_status") {
+        return {
+          state: "loggedIn",
+          accountEmail: "demo@example.com",
+          requiresOpenaiAuth: false,
+          rawAuthMode: "chatgpt",
+          message: null,
+        };
+      }
+      if (command === "thread_list") {
+        return { threads: [] };
+      }
+      if (command === "model_list") {
+        return {
+          models: [
+            {
+              id: "m1",
+              model: "gpt-5",
+              displayName: "gpt-5",
+              isDefault: true,
+              defaultReasoningEffort: "medium",
+              supportedReasoningEfforts: ["low", "medium", "high"],
+            },
+          ],
+        };
+      }
+      if (command === "thread_start") {
+        return {
+          threadId: "thread-1",
+          cwd: "C:/workspace/demo",
+          workspaceFallbackUsed: false,
+          workspaceWarning: null,
+        };
+      }
+      if (command === "turn_start") {
+        return {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          cwd: "D:/work/override",
+          workspaceFallbackUsed: false,
+          workspaceWarning: null,
+        };
+      }
+      if (command === "session_poll_events") {
+        return [];
+      }
+      return undefined;
+    });
+
+    render(<AppShell />);
+    await screen.findByRole("button", { name: "Select thread cwd" });
+
+    await user.click(screen.getByRole("button", { name: "Select thread cwd" }));
+    await user.type(screen.getByRole("textbox"), "hello");
+    await user.click(screen.getByRole("button", { name: "Send prompt" }));
+
+    await waitFor(() => {
+      expect(mockedInvoke).toHaveBeenCalledWith("turn_start", {
+        threadId: "thread-1",
+        text: "hello",
+        model: "gpt-5",
+        effort: "medium",
+        personality: "friendly",
+        currentCwd: "C:/workspace/demo",
+        overrideCwd: "D:/work/override",
       });
     });
   });
@@ -706,13 +781,6 @@ describe("AppShell", () => {
           ],
         };
       }
-      if (command === "workspace_resolve_active_cwd") {
-        return {
-          cwd: "C:/workspace/demo",
-          fallbackUsed: false,
-          warning: null,
-        };
-      }
       if (command === "session_poll_events") {
         return [];
       }
@@ -721,7 +789,7 @@ describe("AppShell", () => {
 
     render(<AppShell />);
     await waitFor(() => {
-      expect(screen.getByText("C:/workspace/demo")).toBeVisible();
+      expect(screen.getByText("(resolving cwd...)")).toBeVisible();
     });
 
     await user.click(screen.getByRole("button", { name: "Select model" }));

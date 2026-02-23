@@ -64,7 +64,6 @@ import {
   persistThreadPanelOpenRecord,
   persistThreadPanelWidthRecord,
 } from "../../core/window/windowStateClient";
-import { resolveActiveCwd } from "../../core/workspace/workspaceStore";
 import { ApprovalDialog } from "../approval/ApprovalDialog";
 import { ChatView, type ComposerSelectOption } from "../chat/ChatView";
 import { ThreadListPanel } from "../chat/ThreadListPanel";
@@ -273,6 +272,18 @@ function modelPreferenceKey(model: string, effort: ReasoningEffort | null): stri
   return `${model}|${effort ?? "__default__"}`;
 }
 
+function normalizePathForComparison(path: string): string {
+  const trimmed = path.trim().replace(/\\/g, "/").replace(/\/+$/, "");
+  if (/^[a-zA-Z]:\//.test(trimmed)) {
+    return trimmed.toLowerCase();
+  }
+  return trimmed;
+}
+
+function pathsEqual(left: string, right: string): boolean {
+  return normalizePathForComparison(left) === normalizePathForComparison(right);
+}
+
 export function AppShell() {
   const [auth, setAuth] = useState<AuthMachineState>(initialAuthMachineState);
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
@@ -298,7 +309,8 @@ export function AppShell() {
   const [threadPanelOpen, setThreadPanelOpen] = useState(true);
   const [threadPanelWidth, setThreadPanelWidth] = useState(DEFAULT_THREAD_PANEL_WIDTH);
   const [threadPanelResizing, setThreadPanelResizing] = useState(false);
-  const [workspacePath, setWorkspacePath] = useState<string | null>(null);
+  const [activeThreadCwd, setActiveThreadCwd] = useState<string | null>(null);
+  const [selectedThreadCwdOverride, setSelectedThreadCwdOverride] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [error, setError] = useState<UserFacingError | null>(null);
@@ -453,7 +465,8 @@ export function AppShell() {
   useEffect(() => {
     if (auth.view !== "loggedIn") {
       closeSettingsModal(true);
-      setWorkspacePath(null);
+      setActiveThreadCwd(null);
+      setSelectedThreadCwdOverride(null);
       setThreadPanelOpen(true);
       setActiveThreadId(null);
       setLoadingThreadId(null);
@@ -471,29 +484,6 @@ export function AppShell() {
         setActiveThreadId((current) =>
           current && loaded.some((thread) => thread.id === current) ? current : null,
         );
-      })
-      .catch((reason) => {
-        if (!cancelled) {
-          setError(mapErrorToUserFacing(reason));
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [auth.view]);
-
-  useEffect(() => {
-    if (auth.view !== "loggedIn") {
-      return;
-    }
-
-    let cancelled = false;
-    void resolveActiveCwd()
-      .then((resolved) => {
-        if (!cancelled) {
-          setWorkspacePath(resolved.cwd);
-        }
       })
       .catch((reason) => {
         if (!cancelled) {
@@ -840,11 +830,12 @@ export function AppShell() {
   async function handleCreateThread(): Promise<void> {
     selectThreadRequestSeqRef.current += 1;
     setLoadingThreadId(null);
+    setSelectedThreadCwdOverride(null);
     setBusy(true);
     try {
       const started = await startThread();
       setActiveThreadId(started.threadId);
-      setWorkspacePath(started.cwd);
+      setActiveThreadCwd(started.cwd);
       dispatchTurn({ type: "resetThread", threadId: started.threadId });
       await refreshThreads();
     } catch (reason) {
@@ -859,6 +850,8 @@ export function AppShell() {
     const requestSeq = selectThreadRequestSeqRef.current;
     setActiveThreadId(threadId);
     setLoadingThreadId(threadId);
+    setActiveThreadCwd(null);
+    setSelectedThreadCwdOverride(null);
     dispatchTurn({ type: "resetThread", threadId });
     setBusy(true);
     try {
@@ -867,7 +860,7 @@ export function AppShell() {
         return;
       }
       setActiveThreadId(resumed.threadId);
-      setWorkspacePath(resumed.cwd);
+      setActiveThreadCwd(resumed.cwd);
       dispatchTurn({
         type: "hydrateThreadHistory",
         threadId: resumed.threadId,
@@ -896,13 +889,27 @@ export function AppShell() {
     setBusy(true);
     try {
       let targetThreadId = activeThreadId;
+      let targetThreadCwd = activeThreadCwd;
+      let targetThreadCwdOverride = selectedThreadCwdOverride;
       if (!targetThreadId) {
         const started = await startThread();
         targetThreadId = started.threadId;
+        targetThreadCwd = started.cwd;
         setActiveThreadId(started.threadId);
-        setWorkspacePath(started.cwd);
+        setActiveThreadCwd(started.cwd);
         dispatchTurn({ type: "resetThread", threadId: started.threadId });
       }
+      const normalizedOverride = targetThreadCwdOverride?.trim() ?? "";
+      if (normalizedOverride.length === 0) {
+        targetThreadCwdOverride = null;
+      } else {
+        targetThreadCwdOverride = normalizedOverride;
+      }
+      const turnCwdOverride =
+        targetThreadCwdOverride &&
+        (!targetThreadCwd || !pathsEqual(targetThreadCwdOverride, targetThreadCwd))
+          ? targetThreadCwdOverride
+          : null;
 
       localUserItemSeqRef.current += 1;
       dispatchTurn({
@@ -918,8 +925,11 @@ export function AppShell() {
         selectedModel,
         selectedEffort,
         selectedPersonality,
+        targetThreadCwd,
+        turnCwdOverride,
       );
-      setWorkspacePath(turn.cwd);
+      setActiveThreadCwd(turn.cwd);
+      setSelectedThreadCwdOverride(null);
       if (turn.turnId) {
         dispatchTurn({
           type: "turnStarted",
@@ -1280,7 +1290,8 @@ export function AppShell() {
               turnState={turnState}
               items={turnItems}
               threadLoading={threadLoading}
-              workspacePath={workspacePath}
+              threadCwd={activeThreadCwd}
+              selectedThreadPath={selectedThreadCwdOverride}
               composerValue={composerValue}
               selectorLabel={selectorLabel}
               selectorDisplay={selectorDisplay}
@@ -1290,6 +1301,7 @@ export function AppShell() {
               onComposerChange={setComposerValue}
               onSelectorChange={handleComposerSelectorChange}
               onCreateThread={() => void handleCreateThread()}
+              onSelectThreadPath={(nextPath) => setSelectedThreadCwdOverride(nextPath)}
               onSubmitPrompt={(nextPrompt) => void handleSubmitPrompt(nextPrompt)}
               onInterrupt={() => void handleInterruptTurn()}
             />

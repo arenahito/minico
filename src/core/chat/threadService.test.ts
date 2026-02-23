@@ -122,7 +122,15 @@ describe("threadService", () => {
     });
     mockedInvoke.mockResolvedValueOnce(undefined);
 
-    await startTurn("t1", "hello", "gpt-5", "medium", "friendly");
+    await startTurn(
+      "t1",
+      "hello",
+      "gpt-5",
+      "medium",
+      "friendly",
+      "C:/thread/cwd",
+      "D:/override/cwd",
+    );
     await interruptTurn("t1", "turn-1");
 
     expect(mockedInvoke).toHaveBeenNthCalledWith(1, "turn_start", {
@@ -131,6 +139,8 @@ describe("threadService", () => {
       model: "gpt-5",
       effort: "medium",
       personality: "friendly",
+      currentCwd: "C:/thread/cwd",
+      overrideCwd: "D:/override/cwd",
     });
     expect(mockedInvoke).toHaveBeenNthCalledWith(2, "turn_interrupt", {
       threadId: "t1",
