@@ -35,6 +35,7 @@ pub fn run() {
             core::thread_turn::thread_list,
             core::thread_turn::thread_start,
             core::thread_turn::thread_resume,
+            core::thread_turn::thread_archive,
             core::thread_turn::turn_start,
             core::thread_turn::turn_interrupt,
             core::thread_turn::approval_respond,

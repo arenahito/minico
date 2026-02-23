@@ -1,5 +1,5 @@
 import type { ThreadSummary } from "../../core/chat/threadService";
-import { RefreshCw } from "lucide-react";
+import { Archive, RefreshCw } from "lucide-react";
 
 interface ThreadListPanelProps {
   threads: ThreadSummary[];
@@ -8,6 +8,7 @@ interface ThreadListPanelProps {
   collapsed: boolean;
   onRefreshThreads: () => void;
   onSelectThread: (threadId: string) => void;
+  onArchiveThread: (threadId: string) => void;
 }
 
 export function ThreadListPanel({
@@ -17,6 +18,7 @@ export function ThreadListPanel({
   collapsed,
   onRefreshThreads,
   onSelectThread,
+  onArchiveThread,
 }: ThreadListPanelProps) {
   return (
     <aside
@@ -49,7 +51,7 @@ export function ThreadListPanel({
             trimmedPreview.length > 0 &&
             trimmedPreview !== trimmedName;
           return (
-            <li key={thread.id}>
+            <li key={thread.id} className="thread-list-row">
               <button
                 type="button"
                 className={`thread-list-item ${
@@ -62,6 +64,19 @@ export function ThreadListPanel({
                 {showSummary ? (
                   <span className="thread-summary">{trimmedPreview}</span>
                 ) : null}
+              </button>
+              <button
+                type="button"
+                className="thread-list-archive-button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onArchiveThread(thread.id);
+                }}
+                disabled={busy}
+                aria-label={`Archive thread ${title}`}
+                title="Archive thread"
+              >
+                <Archive size={16} aria-hidden="true" />
               </button>
             </li>
           );

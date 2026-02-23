@@ -24,6 +24,7 @@ import {
   type ApprovalState,
 } from "../../core/approval/approvalStore";
 import {
+  archiveThread,
   interruptTurn,
   listModels,
   listThreads,
@@ -827,6 +828,33 @@ export function AppShell() {
     }
   }
 
+  async function handleArchiveThread(threadId: string): Promise<void> {
+    setBusy(true);
+    try {
+      await archiveThread(threadId);
+      const loaded = await listThreads();
+      setThreads(loaded);
+      if (threadId === activeThreadId) {
+        setActiveThreadId(null);
+        setLoadingThreadId(null);
+        setActiveThreadCwd(null);
+        setSelectedThreadCwdOverride(null);
+        dispatchTurn({
+          type: "resetThread",
+          threadId: `pending-thread-${Date.now()}`,
+        });
+      } else {
+        setActiveThreadId((current) =>
+          current && loaded.some((thread) => thread.id === current) ? current : null,
+        );
+      }
+    } catch (reason) {
+      setError(mapErrorToUserFacing(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleCreateThread(): Promise<void> {
     selectThreadRequestSeqRef.current += 1;
     setLoadingThreadId(null);
@@ -1279,6 +1307,7 @@ export function AppShell() {
             collapsed={!threadPanelOpen}
             onRefreshThreads={() => void refreshThreads()}
             onSelectThread={(threadId) => void handleSelectThread(threadId)}
+            onArchiveThread={(threadId) => void handleArchiveThread(threadId)}
           />
           <div
             className={`thread-panel-resizer ${threadPanelResizing ? "is-dragging" : ""} ${

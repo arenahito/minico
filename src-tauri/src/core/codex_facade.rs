@@ -164,6 +164,10 @@ impl<R: RpcRuntime> CodexFacade<R> {
         )
     }
 
+    pub fn thread_archive(&mut self, thread_id: &str) -> Result<Value, CodexFacadeError> {
+        self.request_json("thread/archive", json!({ "threadId": thread_id }))
+    }
+
     pub fn model_list(&mut self) -> Result<Value, CodexFacadeError> {
         self.request_json("model/list", json!({}))
     }

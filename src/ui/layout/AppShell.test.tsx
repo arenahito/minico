@@ -229,6 +229,62 @@ describe("AppShell", () => {
     });
   });
 
+  it("archives thread from thread list action", async () => {
+    const user = userEvent.setup();
+    let threadListCount = 0;
+    mockedInvoke.mockImplementation(async (command, args) => {
+      if (command === "auth_read_status") {
+        return {
+          state: "loggedIn",
+          accountEmail: "demo@example.com",
+          requiresOpenaiAuth: false,
+          rawAuthMode: "chatgpt",
+          message: null,
+        };
+      }
+      if (command === "thread_list") {
+        threadListCount += 1;
+        if (threadListCount === 1) {
+          return {
+            threads: [
+              { id: "thread-1", name: "thread one", preview: "first" },
+              { id: "thread-2", name: "thread two", preview: "second" },
+            ],
+          };
+        }
+        return {
+          threads: [{ id: "thread-2", name: "thread two", preview: "second" }],
+        };
+      }
+      if (command === "thread_archive") {
+        expect(args).toEqual({ threadId: "thread-1" });
+        return {};
+      }
+      if (command === "session_poll_events") {
+        return [];
+      }
+      return undefined;
+    });
+
+    render(<AppShell />);
+    await waitFor(() => {
+      expect(screen.getByText("thread one")).toBeVisible();
+      expect(screen.getByText("thread two")).toBeVisible();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Archive thread thread one" }));
+
+    await waitFor(() => {
+      expect(mockedInvoke).toHaveBeenCalledWith("thread_archive", {
+        threadId: "thread-1",
+      });
+    });
+    await waitFor(() => {
+      expect(screen.queryByText("thread one")).toBeNull();
+      expect(screen.getByText("thread two")).toBeVisible();
+    });
+  });
+
   it("re-reads auth status after login completion success notification", async () => {
     const user = userEvent.setup();
     let readCount = 0;
@@ -430,17 +486,17 @@ describe("AppShell", () => {
     await waitFor(() => {
       expect(screen.getByText("second")).toBeVisible();
     });
-    expect(screen.getByRole("button", { name: /first/i })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "first" })).toHaveAttribute(
       "aria-selected",
       "false",
     );
-    expect(screen.getByRole("button", { name: /second/i })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "second" })).toHaveAttribute(
       "aria-selected",
       "false",
     );
     expect(screen.queryByText("Loading selected thread...")).toBeNull();
 
-    await user.click(screen.getByRole("button", { name: /second/i }));
+    await user.click(screen.getByRole("button", { name: "second" }));
 
     await waitFor(() => {
       expect(screen.getByText("question")).toBeVisible();
@@ -500,7 +556,7 @@ describe("AppShell", () => {
       expect(screen.getByText("second")).toBeVisible();
     });
 
-    const secondThreadButton = screen.getByRole("button", { name: /second/i });
+    const secondThreadButton = screen.getByRole("button", { name: "second" });
     await user.click(secondThreadButton);
 
     expect(secondThreadButton).toHaveAttribute("aria-selected", "true");

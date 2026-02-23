@@ -395,15 +395,51 @@ pre {
   overflow: auto;
 }
 
+.thread-list-row {
+  position: relative;
+}
+
 .thread-panel .thread-list-item {
   width: 100%;
   text-align: left;
   display: grid;
   gap: var(--space-1);
+  padding-right: 44px;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: transparent;
   box-shadow: none;
+}
+
+.thread-panel .thread-list-archive-button {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--surface-base);
+  color: var(--fg-default);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.thread-list-row:hover .thread-list-archive-button {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.thread-panel .thread-list-archive-button:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .thread-list-item.is-active {

@@ -409,6 +409,20 @@ pub async fn thread_resume(
 }
 
 #[tauri::command]
+pub async fn thread_archive(
+    state: State<'_, SessionRuntimeState>,
+    thread_id: String,
+) -> Result<(), String> {
+    run_with_facade(&state, move |facade| {
+        let _ = facade
+            .thread_archive(&thread_id)
+            .map_err(|error| error.to_string())?;
+        Ok(())
+    })
+    .await
+}
+
+#[tauri::command]
 pub async fn turn_start(
     state: State<'_, SessionRuntimeState>,
     thread_id: String,

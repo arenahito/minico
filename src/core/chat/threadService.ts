@@ -112,6 +112,10 @@ export async function resumeThread(
   };
 }
 
+export async function archiveThread(threadId: string): Promise<void> {
+  await invoke("thread_archive", { threadId });
+}
+
 export async function startTurn(
   threadId: string,
   text: string,

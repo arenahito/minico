@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  archiveThread,
   interruptTurn,
   listModels,
   listThreads,
@@ -109,6 +110,14 @@ describe("threadService", () => {
     expect(mockedInvoke).toHaveBeenNthCalledWith(1, "thread_start");
     expect(mockedInvoke).toHaveBeenNthCalledWith(2, "thread_resume", {
       threadId: "t-existing",
+    });
+  });
+
+  it("archives thread through backend command", async () => {
+    mockedInvoke.mockResolvedValueOnce(undefined);
+    await archiveThread("t-archive");
+    expect(mockedInvoke).toHaveBeenCalledWith("thread_archive", {
+      threadId: "t-archive",
     });
   });
 
