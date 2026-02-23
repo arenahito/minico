@@ -983,6 +983,8 @@ export function ChatView({
                     </ul>
                   ) : null}
                 </div>
+              </div>
+              <div className="composer-actions">
                 <button
                   type="button"
                   className="icon-button icon-button-muted"
@@ -992,8 +994,6 @@ export function ChatView({
                 >
                   <ListPlus size={16} aria-hidden="true" />
                 </button>
-              </div>
-              <div className="composer-actions">
                 <button
                   type="button"
                   className="icon-button icon-button-muted"
