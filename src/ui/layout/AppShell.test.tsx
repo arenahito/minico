@@ -319,6 +319,74 @@ describe("AppShell", () => {
     });
   });
 
+  it("loads threads in pages of five and fetches next page on demand", async () => {
+    const user = userEvent.setup();
+    mockedInvoke.mockImplementation(async (command, args) => {
+      if (command === "auth_read_status") {
+        return {
+          state: "loggedIn",
+          accountEmail: "demo@example.com",
+          requiresOpenaiAuth: false,
+          rawAuthMode: "chatgpt",
+          message: null,
+        };
+      }
+      if (command === "thread_list") {
+        if (args && (args as { cursor?: string }).cursor === "cursor-1") {
+          return {
+            threads: [
+              { id: "thread-6", name: "thread 6", preview: "sixth" },
+              { id: "thread-7", name: "thread 7", preview: "seventh" },
+            ],
+            nextCursor: null,
+          };
+        }
+        return {
+          threads: [
+            { id: "thread-1", name: "thread 1", preview: "first" },
+            { id: "thread-2", name: "thread 2", preview: "second" },
+            { id: "thread-3", name: "thread 3", preview: "third" },
+            { id: "thread-4", name: "thread 4", preview: "fourth" },
+            { id: "thread-5", name: "thread 5", preview: "fifth" },
+          ],
+          nextCursor: "cursor-1",
+        };
+      }
+      if (command === "workspace_resolve_active_cwd") {
+        return {
+          cwd: "C:/workspace/demo",
+          fallbackUsed: false,
+          warning: null,
+        };
+      }
+      if (command === "model_list") {
+        return { models: [] };
+      }
+      if (command === "session_poll_events") {
+        return [];
+      }
+      return undefined;
+    });
+
+    render(<AppShell />);
+    await waitFor(() => {
+      expect(screen.getByText("thread 1")).toBeVisible();
+      expect(screen.getByText("thread 5")).toBeVisible();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Load more threads" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("thread 6")).toBeVisible();
+      expect(screen.getByText("thread 7")).toBeVisible();
+    });
+    expect(mockedInvoke).toHaveBeenCalledWith("thread_list", { limit: 30 });
+    expect(mockedInvoke).toHaveBeenCalledWith("thread_list", {
+      cursor: "cursor-1",
+      limit: 30,
+    });
+  });
+
   it("does not start a thread on create until first prompt is sent", async () => {
     const user = userEvent.setup();
     mockedInvoke.mockImplementation(async (command) => {

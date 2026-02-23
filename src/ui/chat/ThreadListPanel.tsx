@@ -5,8 +5,11 @@ interface ThreadListPanelProps {
   threads: ThreadSummary[];
   activeThreadId: string | null;
   busy: boolean;
+  hasMoreThreads: boolean;
+  loadingMoreThreads: boolean;
   collapsed: boolean;
   onRefreshThreads: () => void;
+  onLoadMoreThreads: () => void;
   onSelectThread: (threadId: string) => void;
   onArchiveThread: (threadId: string) => void;
 }
@@ -15,8 +18,11 @@ export function ThreadListPanel({
   threads,
   activeThreadId,
   busy,
+  hasMoreThreads,
+  loadingMoreThreads,
   collapsed,
   onRefreshThreads,
+  onLoadMoreThreads,
   onSelectThread,
   onArchiveThread,
 }: ThreadListPanelProps) {
@@ -82,6 +88,20 @@ export function ThreadListPanel({
           );
         })}
         {threads.length === 0 ? <li className="thread-empty">No app-server threads yet.</li> : null}
+        {hasMoreThreads ? (
+          <li className="thread-load-more-row">
+            <button
+              type="button"
+              className="thread-load-more-button"
+              onClick={onLoadMoreThreads}
+              disabled={busy || loadingMoreThreads}
+              aria-label="Load more threads"
+              title="Load more threads"
+            >
+              {loadingMoreThreads ? "Loading..." : "Load more"}
+            </button>
+          </li>
+        ) : null}
       </ul>
     </aside>
   );

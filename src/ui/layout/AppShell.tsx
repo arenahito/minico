@@ -164,6 +164,7 @@ const THREAD_PANEL_MIN_WIDTH = 220;
 const THREAD_PANEL_MAX_WIDTH = 560;
 const CHAT_PANE_MIN_WIDTH = 420;
 const DEFAULT_THREAD_PANEL_WIDTH = 320;
+const THREAD_LIST_PAGE_SIZE = 30;
 const SETTINGS_MODAL_ANIMATION_MS = 300;
 const DEFAULT_CODEX_PERSONALITY: CodexPersonality = "friendly";
 const DEFAULT_APP_THEME: AppTheme = "light";
@@ -307,6 +308,18 @@ function withThreadPlaceholder(
   return [placeholder, ...loaded];
 }
 
+function appendUniqueThreads(current: ThreadSummary[], loaded: ThreadSummary[]): ThreadSummary[] {
+  if (loaded.length === 0) {
+    return current;
+  }
+  const known = new Set(current.map((thread) => thread.id));
+  const appended = loaded.filter((thread) => !known.has(thread.id));
+  if (appended.length === 0) {
+    return current;
+  }
+  return [...current, ...appended];
+}
+
 export function AppShell() {
   const [auth, setAuth] = useState<AuthMachineState>(initialAuthMachineState);
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
@@ -332,6 +345,8 @@ export function AppShell() {
   const [threadPanelOpen, setThreadPanelOpen] = useState(true);
   const [threadPanelWidth, setThreadPanelWidth] = useState(DEFAULT_THREAD_PANEL_WIDTH);
   const [threadPanelResizing, setThreadPanelResizing] = useState(false);
+  const [threadListNextCursor, setThreadListNextCursor] = useState<string | null>(null);
+  const [threadListLoadingMore, setThreadListLoadingMore] = useState(false);
   const [activeThreadCwd, setActiveThreadCwd] = useState<string | null>(null);
   const [defaultThreadCwd, setDefaultThreadCwd] = useState<string | null>(null);
   const [selectedThreadCwdOverride, setSelectedThreadCwdOverride] = useState<string | null>(null);
@@ -503,6 +518,8 @@ export function AppShell() {
       setActiveThreadCwd(null);
       setDefaultThreadCwd(null);
       setSelectedThreadCwdOverride(null);
+      setThreadListNextCursor(null);
+      setThreadListLoadingMore(false);
       activeTurnIdRef.current = null;
       activeThreadIdRef.current = null;
       pendingThreadTitleRefreshTurnIdsRef.current.clear();
@@ -514,12 +531,14 @@ export function AppShell() {
     }
 
     let cancelled = false;
-    void listThreads()
-      .then((loaded) => {
+    void listThreads({ limit: THREAD_LIST_PAGE_SIZE })
+      .then((page) => {
         if (cancelled) {
           return;
         }
+        const loaded = page.threads;
         setThreads(loaded);
+        setThreadListNextCursor(page.nextCursor);
         setActiveThreadId((current) =>
           current && loaded.some((thread) => thread.id === current) ? current : null,
         );
@@ -917,11 +936,13 @@ export function AppShell() {
       setBusy(true);
     }
     try {
-      const loaded = await listThreads();
+      const page = await listThreads({ limit: THREAD_LIST_PAGE_SIZE });
       const preserveThreadId = options?.preserveThreadId ?? null;
+      const loaded = page.threads;
       setThreads((current) =>
         withThreadPlaceholder(loaded, current, preserveThreadId),
       );
+      setThreadListNextCursor(page.nextCursor);
     } catch (reason) {
       setError(mapErrorToUserFacing(reason));
     } finally {
@@ -935,8 +956,10 @@ export function AppShell() {
     setBusy(true);
     try {
       await archiveThread(threadId);
-      const loaded = await listThreads();
+      const page = await listThreads({ limit: THREAD_LIST_PAGE_SIZE });
+      const loaded = page.threads;
       setThreads(loaded);
+      setThreadListNextCursor(page.nextCursor);
       if (threadId === activeThreadId) {
         setActiveThreadId(null);
         activeThreadIdRef.current = null;
@@ -958,6 +981,26 @@ export function AppShell() {
       setError(mapErrorToUserFacing(reason));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function handleLoadMoreThreads(): Promise<void> {
+    if (threadListLoadingMore || !threadListNextCursor) {
+      return;
+    }
+
+    setThreadListLoadingMore(true);
+    try {
+      const page = await listThreads({
+        cursor: threadListNextCursor,
+        limit: THREAD_LIST_PAGE_SIZE,
+      });
+      setThreads((current) => appendUniqueThreads(current, page.threads));
+      setThreadListNextCursor(page.nextCursor);
+    } catch (reason) {
+      setError(mapErrorToUserFacing(reason));
+    } finally {
+      setThreadListLoadingMore(false);
     }
   }
 
@@ -1420,8 +1463,11 @@ export function AppShell() {
             threads={threads}
             activeThreadId={activeThreadId}
             busy={busy}
+            hasMoreThreads={threadListNextCursor !== null}
+            loadingMoreThreads={threadListLoadingMore}
             collapsed={!threadPanelOpen}
             onRefreshThreads={() => void refreshThreads()}
+            onLoadMoreThreads={() => void handleLoadMoreThreads()}
             onSelectThread={(threadId) => void handleSelectThread(threadId)}
             onArchiveThread={(threadId) => void handleArchiveThread(threadId)}
           />

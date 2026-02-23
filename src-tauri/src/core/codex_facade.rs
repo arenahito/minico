@@ -157,11 +157,19 @@ impl<R: RpcRuntime> CodexFacade<R> {
         self.request_json("thread/resume", json!({ "threadId": thread_id }))
     }
 
-    pub fn thread_list_app_server_only(&mut self) -> Result<Value, CodexFacadeError> {
-        self.request_json(
-            "thread/list",
-            json!({ "sourceKinds": ["vscode"] }),
-        )
+    pub fn thread_list_app_server_only(
+        &mut self,
+        cursor: Option<&str>,
+        limit: Option<u32>,
+    ) -> Result<Value, CodexFacadeError> {
+        let mut params = json!({ "sourceKinds": ["vscode"] });
+        if let Some(value) = cursor.map(str::trim).filter(|value| !value.is_empty()) {
+            params["cursor"] = json!(value);
+        }
+        if let Some(value) = limit {
+            params["limit"] = json!(value);
+        }
+        self.request_json("thread/list", params)
     }
 
     pub fn thread_archive(&mut self, thread_id: &str) -> Result<Value, CodexFacadeError> {

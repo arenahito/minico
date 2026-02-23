@@ -474,6 +474,16 @@ pre {
   padding: var(--space-2);
 }
 
+.thread-load-more-row {
+  display: block;
+  padding-top: var(--space-1);
+}
+
+.thread-panel .thread-load-more-button {
+  width: 100%;
+  justify-content: center;
+}
+
 .status-card,
 .login-card {
   border: 1px solid var(--border-default);

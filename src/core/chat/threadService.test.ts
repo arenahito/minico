@@ -37,12 +37,31 @@ describe("threadService", () => {
         { id: "t1", name: "Title 1", preview: "hello" },
         { id: "t2", name: null, preview: "world" },
       ],
+      nextCursor: "cursor-2",
     });
-    await expect(listThreads()).resolves.toEqual([
-      { id: "t1", name: "Title 1", preview: "hello" },
-      { id: "t2", name: null, preview: "world" },
-    ]);
+    await expect(listThreads()).resolves.toEqual({
+      threads: [
+        { id: "t1", name: "Title 1", preview: "hello" },
+        { id: "t2", name: null, preview: "world" },
+      ],
+      nextCursor: "cursor-2",
+    });
     expect(mockedInvoke).toHaveBeenCalledWith("thread_list");
+  });
+
+  it("loads thread list with cursor pagination params", async () => {
+    mockedInvoke.mockResolvedValueOnce({
+      threads: [{ id: "t3", name: "Title 3", preview: "third" }],
+      nextCursor: null,
+    });
+    await expect(listThreads({ cursor: "cursor-2", limit: 5 })).resolves.toEqual({
+      threads: [{ id: "t3", name: "Title 3", preview: "third" }],
+      nextCursor: null,
+    });
+    expect(mockedInvoke).toHaveBeenCalledWith("thread_list", {
+      cursor: "cursor-2",
+      limit: 5,
+    });
   });
 
   it("loads model list through backend command", async () => {

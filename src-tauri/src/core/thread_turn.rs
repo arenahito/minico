@@ -24,6 +24,7 @@ pub struct ThreadSummary {
 #[serde(rename_all = "camelCase")]
 pub struct ThreadListResult {
     pub threads: Vec<ThreadSummary>,
+    pub next_cursor: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -155,7 +156,11 @@ fn parse_thread_list(payload: &Value) -> ThreadListResult {
                 .collect()
         })
         .unwrap_or_default();
-    ThreadListResult { threads }
+    let next_cursor = payload
+        .get("nextCursor")
+        .and_then(Value::as_str)
+        .map(ToString::to_string);
+    ThreadListResult { threads, next_cursor }
 }
 
 fn parse_model_list(payload: &Value) -> ModelListResult {
@@ -342,10 +347,18 @@ pub async fn session_poll_events(
 #[tauri::command]
 pub async fn thread_list(
     state: State<'_, SessionRuntimeState>,
+    cursor: Option<String>,
+    limit: Option<u32>,
 ) -> Result<ThreadListResult, String> {
-    run_with_facade(&state, |facade| {
+    let normalized_cursor = cursor
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string);
+    let normalized_limit = limit.map(|value| value.clamp(1, 100));
+    run_with_facade(&state, move |facade| {
         let payload = facade
-            .thread_list_app_server_only()
+            .thread_list_app_server_only(normalized_cursor.as_deref(), normalized_limit)
             .map_err(|error| error.to_string())?;
         Ok(parse_thread_list(&payload))
     })
@@ -621,13 +634,15 @@ mod tests {
             "data": [
                 { "id": "thread-a", "name": "Title A", "preview": "alpha" },
                 { "id": "thread-b", "preview": "beta" }
-            ]
+            ],
+            "nextCursor": "cursor-2"
         }));
         assert_eq!(parsed.threads.len(), 2);
         assert_eq!(parsed.threads[0].id, "thread-a");
         assert_eq!(parsed.threads[0].name.as_deref(), Some("Title A"));
         assert_eq!(parsed.threads[1].preview, "beta");
         assert_eq!(parsed.threads[1].name, None);
+        assert_eq!(parsed.next_cursor.as_deref(), Some("cursor-2"));
     }
 
     #[test]

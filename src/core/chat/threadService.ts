@@ -34,10 +34,16 @@ export interface ModelSummary {
 
 export interface ThreadListResult {
   threads: ThreadSummary[];
+  nextCursor: string | null;
 }
 
 export interface ModelListResult {
   models: ModelSummary[];
+}
+
+export interface ThreadListRequest {
+  cursor?: string | null;
+  limit?: number;
 }
 
 export interface ThreadSessionResult {
@@ -84,9 +90,27 @@ export async function pollSessionEvents(
   });
 }
 
-export async function listThreads(): Promise<ThreadSummary[]> {
-  const response = await invoke<ThreadListResult>("thread_list");
-  return response.threads;
+export async function listThreads(
+  request?: ThreadListRequest,
+): Promise<ThreadListResult> {
+  const params: Record<string, unknown> = {};
+  if (typeof request?.cursor === "string" && request.cursor.length > 0) {
+    params.cursor = request.cursor;
+  }
+  if (typeof request?.limit === "number") {
+    params.limit = request.limit;
+  }
+  const response =
+    Object.keys(params).length === 0
+      ? await invoke<ThreadListResult>("thread_list")
+      : await invoke<ThreadListResult>("thread_list", params);
+  return {
+    threads: response.threads ?? [],
+    nextCursor:
+      typeof response.nextCursor === "string" && response.nextCursor.length > 0
+        ? response.nextCursor
+        : null,
+  };
 }
 
 export async function listModels(): Promise<ModelSummary[]> {
