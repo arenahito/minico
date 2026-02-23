@@ -100,6 +100,7 @@ describe("LoginView", () => {
       />,
     );
     expect(screen.getByRole("heading", { name: "Preparing minico" })).toBeVisible();
+    expect(screen.getByRole("img", { name: "Preparing minico" })).toBeVisible();
     expect(screen.queryByRole("button", { name: "Continue with ChatGPT" })).toBeNull();
   });
 });

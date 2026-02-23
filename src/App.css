@@ -638,10 +638,10 @@ pre {
   top: 6px;
   width: 28px;
   height: 28px;
-  border-radius: 8px;
-  border: 1px solid color-mix(in srgb, var(--border-default) 70%, var(--fg-default));
+  border-radius: 0;
+  border: none;
   object-fit: cover;
-  background: var(--surface-base);
+  background: transparent;
 }
 
 .chat-item-body {
@@ -1134,6 +1134,10 @@ pre {
   width: min(560px, 100%);
   display: grid;
   gap: var(--space-3);
+}
+
+.login-startup-spinner {
+  justify-self: center;
 }
 
 .login-card h2 {

@@ -24,6 +24,11 @@ export function LoginView({
   if (startupChecking) {
     return (
       <section className="login-card" aria-label="startup auth checking">
+        <img
+          className="chat-pane-loading-image login-startup-spinner"
+          src="/minico500x500.png"
+          alt="Preparing minico"
+        />
         <h2>Preparing minico</h2>
         <p>Checking app-server connectivity and account status.</p>
         {startupCheckSlow ? (
