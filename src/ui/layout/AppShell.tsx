@@ -65,6 +65,7 @@ import {
   persistThreadPanelOpenRecord,
   persistThreadPanelWidthRecord,
 } from "../../core/window/windowStateClient";
+import { resolveActiveCwd } from "../../core/workspace/workspaceStore";
 import { ApprovalDialog } from "../approval/ApprovalDialog";
 import { ChatView, type ComposerSelectOption } from "../chat/ChatView";
 import { ThreadListPanel } from "../chat/ThreadListPanel";
@@ -137,11 +138,12 @@ function dispatchAuthEventFromNotification(
 function applyTurnEvent(
   dispatch: Dispatch<TurnAction>,
   event: SessionPolledEvent,
-): void {
+): TurnAction | null {
   const action = eventToTurnAction(event);
   if (action) {
     dispatch(action);
   }
+  return action;
 }
 
 function shouldAutoRefreshAuth(view: AuthMachineState["view"]): boolean {
@@ -285,6 +287,26 @@ function pathsEqual(left: string, right: string): boolean {
   return normalizePathForComparison(left) === normalizePathForComparison(right);
 }
 
+function withThreadPlaceholder(
+  loaded: ThreadSummary[],
+  current: ThreadSummary[],
+  threadId: string | null,
+): ThreadSummary[] {
+  if (!threadId) {
+    return loaded;
+  }
+  if (loaded.some((thread) => thread.id === threadId)) {
+    return loaded;
+  }
+  const existing = current.find((thread) => thread.id === threadId);
+  const placeholder: ThreadSummary = existing ?? {
+    id: threadId,
+    name: null,
+    preview: "",
+  };
+  return [placeholder, ...loaded];
+}
+
 export function AppShell() {
   const [auth, setAuth] = useState<AuthMachineState>(initialAuthMachineState);
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
@@ -311,6 +333,7 @@ export function AppShell() {
   const [threadPanelWidth, setThreadPanelWidth] = useState(DEFAULT_THREAD_PANEL_WIDTH);
   const [threadPanelResizing, setThreadPanelResizing] = useState(false);
   const [activeThreadCwd, setActiveThreadCwd] = useState<string | null>(null);
+  const [defaultThreadCwd, setDefaultThreadCwd] = useState<string | null>(null);
   const [selectedThreadCwdOverride, setSelectedThreadCwdOverride] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [approvalBusy, setApprovalBusy] = useState(false);
@@ -334,6 +357,9 @@ export function AppShell() {
   const autoCancelInFlightRef = useRef<Set<number>>(new Set());
   const localUserItemSeqRef = useRef(0);
   const selectThreadRequestSeqRef = useRef(0);
+  const activeTurnIdRef = useRef<string | null>(turnState.activeTurnId);
+  const activeThreadIdRef = useRef<string | null>(activeThreadId);
+  const pendingThreadTitleRefreshTurnIdsRef = useRef<Set<string>>(new Set());
 
   const activeApproval = useMemo(
     () => currentApproval(approvalState),
@@ -364,6 +390,14 @@ export function AppShell() {
   useEffect(() => {
     selectedModelRef.current = selectedModel;
   }, [selectedModel]);
+
+  useEffect(() => {
+    activeTurnIdRef.current = turnState.activeTurnId;
+  }, [turnState.activeTurnId]);
+
+  useEffect(() => {
+    activeThreadIdRef.current = activeThreadId;
+  }, [activeThreadId]);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -467,7 +501,11 @@ export function AppShell() {
     if (auth.view !== "loggedIn") {
       closeSettingsModal(true);
       setActiveThreadCwd(null);
+      setDefaultThreadCwd(null);
       setSelectedThreadCwdOverride(null);
+      activeTurnIdRef.current = null;
+      activeThreadIdRef.current = null;
+      pendingThreadTitleRefreshTurnIdsRef.current.clear();
       setThreadPanelOpen(true);
       setActiveThreadId(null);
       setLoadingThreadId(null);
@@ -489,6 +527,32 @@ export function AppShell() {
       .catch((reason) => {
         if (!cancelled) {
           setError(mapErrorToUserFacing(reason));
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [auth.view]);
+
+  useEffect(() => {
+    if (auth.view !== "loggedIn") {
+      setDefaultThreadCwd(null);
+      return;
+    }
+
+    let cancelled = false;
+    void resolveActiveCwd()
+      .then((resolved) => {
+        if (cancelled) {
+          return;
+        }
+        const cwd = typeof resolved?.cwd === "string" ? resolved.cwd.trim() : "";
+        setDefaultThreadCwd(cwd.length > 0 ? cwd : null);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setDefaultThreadCwd(null);
         }
       });
 
@@ -753,16 +817,45 @@ export function AppShell() {
 
           if (eventIsAccountSignal(event)) {
             setAuth((current) => dispatchAuthEventFromNotification(current, event));
+          if (
+            event.kind === "notification" &&
+            event.method === "account/login/completed" &&
+            event.params.success === true
+          ) {
+            setAuthRefreshKey((current) => current + 1);
+          }
+        }
+
+          const turnAction = applyTurnEvent(dispatchTurn, event);
+          if (turnAction?.type === "turnStarted") {
+            activeTurnIdRef.current = turnAction.turnId;
+            pendingThreadTitleRefreshTurnIdsRef.current.add(turnAction.turnId);
+          } else if (
+            turnAction?.type === "turnCompleted" ||
+            turnAction?.type === "turnInterrupted"
+          ) {
+            pendingThreadTitleRefreshTurnIdsRef.current.delete(turnAction.turnId);
+            if (activeTurnIdRef.current === turnAction.turnId) {
+              activeTurnIdRef.current = null;
+            }
+          } else if (
+            turnAction?.type === "assistantDelta" &&
+            turnAction.channel === "agentMessage"
+          ) {
+            const activeTurnId = activeTurnIdRef.current;
+            const activeThreadId = activeThreadIdRef.current;
             if (
-              event.kind === "notification" &&
-              event.method === "account/login/completed" &&
-              event.params.success === true
+              activeTurnId &&
+              activeThreadId &&
+              pendingThreadTitleRefreshTurnIdsRef.current.has(activeTurnId)
             ) {
-              setAuthRefreshKey((current) => current + 1);
+              pendingThreadTitleRefreshTurnIdsRef.current.delete(activeTurnId);
+              void refreshThreads({
+                preserveThreadId: activeThreadId,
+                manageBusy: false,
+              });
             }
           }
-
-          applyTurnEvent(dispatchTurn, event);
 
           if (event.kind === "serverRequest") {
             setApprovalState((current) => ingestApprovalEvent(current, event));
@@ -816,15 +909,25 @@ export function AppShell() {
     })();
   }, [activeApproval, auth.view]);
 
-  async function refreshThreads(): Promise<void> {
-    setBusy(true);
+  async function refreshThreads(
+    options?: { preserveThreadId?: string | null; manageBusy?: boolean },
+  ): Promise<void> {
+    const manageBusy = options?.manageBusy ?? true;
+    if (manageBusy) {
+      setBusy(true);
+    }
     try {
       const loaded = await listThreads();
-      setThreads(loaded);
+      const preserveThreadId = options?.preserveThreadId ?? null;
+      setThreads((current) =>
+        withThreadPlaceholder(loaded, current, preserveThreadId),
+      );
     } catch (reason) {
       setError(mapErrorToUserFacing(reason));
     } finally {
-      setBusy(false);
+      if (manageBusy) {
+        setBusy(false);
+      }
     }
   }
 
@@ -836,9 +939,12 @@ export function AppShell() {
       setThreads(loaded);
       if (threadId === activeThreadId) {
         setActiveThreadId(null);
+        activeThreadIdRef.current = null;
         setLoadingThreadId(null);
         setActiveThreadCwd(null);
         setSelectedThreadCwdOverride(null);
+        activeTurnIdRef.current = null;
+        pendingThreadTitleRefreshTurnIdsRef.current.clear();
         dispatchTurn({
           type: "resetThread",
           threadId: `pending-thread-${Date.now()}`,
@@ -861,31 +967,29 @@ export function AppShell() {
     setSelectedThreadCwdOverride(null);
     setActiveThreadCwd(null);
     setActiveThreadId(null);
+    activeThreadIdRef.current = null;
+    activeTurnIdRef.current = null;
+    pendingThreadTitleRefreshTurnIdsRef.current.clear();
     dispatchTurn({
       type: "resetThread",
       threadId: `pending-thread-${Date.now()}`,
     });
-    setBusy(true);
-    try {
-      const started = await startThread();
-      setActiveThreadId(started.threadId);
-      setActiveThreadCwd(started.cwd);
-      dispatchTurn({ type: "resetThread", threadId: started.threadId });
-      await refreshThreads();
-    } catch (reason) {
-      setError(mapErrorToUserFacing(reason));
-    } finally {
-      setBusy(false);
-    }
+    setComposerValue("");
   }
 
   async function handleSelectThread(threadId: string): Promise<void> {
+    if (threadId === activeThreadId) {
+      return;
+    }
     selectThreadRequestSeqRef.current += 1;
     const requestSeq = selectThreadRequestSeqRef.current;
     setActiveThreadId(threadId);
+    activeThreadIdRef.current = threadId;
     setLoadingThreadId(threadId);
     setActiveThreadCwd(null);
     setSelectedThreadCwdOverride(null);
+    activeTurnIdRef.current = null;
+    pendingThreadTitleRefreshTurnIdsRef.current.clear();
     dispatchTurn({ type: "resetThread", threadId });
     setBusy(true);
     try {
@@ -894,6 +998,7 @@ export function AppShell() {
         return;
       }
       setActiveThreadId(resumed.threadId);
+      activeThreadIdRef.current = resumed.threadId;
       setActiveThreadCwd(resumed.cwd);
       dispatchTurn({
         type: "hydrateThreadHistory",
@@ -930,8 +1035,12 @@ export function AppShell() {
         targetThreadId = started.threadId;
         targetThreadCwd = started.cwd;
         setActiveThreadId(started.threadId);
+        activeThreadIdRef.current = started.threadId;
         setActiveThreadCwd(started.cwd);
         dispatchTurn({ type: "resetThread", threadId: started.threadId });
+        setThreads((current) =>
+          withThreadPlaceholder(current, current, started.threadId),
+        );
       }
       const normalizedOverride = targetThreadCwdOverride?.trim() ?? "";
       if (normalizedOverride.length === 0) {
@@ -965,6 +1074,8 @@ export function AppShell() {
       setActiveThreadCwd(turn.cwd);
       setSelectedThreadCwdOverride(null);
       if (turn.turnId) {
+        activeTurnIdRef.current = turn.turnId;
+        pendingThreadTitleRefreshTurnIdsRef.current.add(turn.turnId);
         dispatchTurn({
           type: "turnStarted",
           threadId: targetThreadId,
@@ -972,7 +1083,10 @@ export function AppShell() {
         });
       }
       setComposerValue("");
-      await refreshThreads();
+      await refreshThreads({
+        preserveThreadId: targetThreadId,
+        manageBusy: false,
+      });
     } catch (reason) {
       setError(mapErrorToUserFacing(reason));
     } finally {
@@ -1236,6 +1350,8 @@ export function AppShell() {
       ? selectedEffort
       : EFFORT_SELECTOR_DEFAULT_VALUE;
   }, [selectedEffort, selectedModel, selectedModelSummary, selectorStage]);
+  const displayedThreadCwd =
+    activeThreadCwd ?? (activeThreadId === null ? defaultThreadCwd : null);
 
   function handleComposerSelectorChange(nextValue: string): boolean {
     if (selectorStage === "model") {
@@ -1325,7 +1441,7 @@ export function AppShell() {
               turnState={turnState}
               items={turnItems}
               threadLoading={threadLoading}
-              threadCwd={activeThreadCwd}
+              threadCwd={displayedThreadCwd}
               selectedThreadPath={selectedThreadCwdOverride}
               composerValue={composerValue}
               selectorLabel={selectorLabel}

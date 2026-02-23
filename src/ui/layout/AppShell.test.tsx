@@ -229,6 +229,40 @@ describe("AppShell", () => {
     });
   });
 
+  it("shows default workspace path when no thread is selected", async () => {
+    mockedInvoke.mockImplementation(async (command) => {
+      if (command === "auth_read_status") {
+        return {
+          state: "loggedIn",
+          accountEmail: "demo@example.com",
+          requiresOpenaiAuth: false,
+          rawAuthMode: "chatgpt",
+          message: null,
+        };
+      }
+      if (command === "thread_list") {
+        return { threads: [] };
+      }
+      if (command === "workspace_resolve_active_cwd") {
+        return {
+          cwd: "C:/workspace/default",
+          fallbackUsed: false,
+          warning: null,
+        };
+      }
+      if (command === "session_poll_events") {
+        return [];
+      }
+      return undefined;
+    });
+
+    render(<AppShell />);
+
+    await waitFor(() => {
+      expect(screen.getByText("C:/workspace/default")).toBeVisible();
+    });
+  });
+
   it("archives thread from thread list action", async () => {
     const user = userEvent.setup();
     let threadListCount = 0;
@@ -283,6 +317,144 @@ describe("AppShell", () => {
       expect(screen.queryByText("thread one")).toBeNull();
       expect(screen.getByText("thread two")).toBeVisible();
     });
+  });
+
+  it("does not start a thread on create until first prompt is sent", async () => {
+    const user = userEvent.setup();
+    mockedInvoke.mockImplementation(async (command) => {
+      if (command === "auth_read_status") {
+        return {
+          state: "loggedIn",
+          accountEmail: "demo@example.com",
+          requiresOpenaiAuth: false,
+          rawAuthMode: "chatgpt",
+          message: null,
+        };
+      }
+      if (command === "thread_list") {
+        return { threads: [] };
+      }
+      if (command === "thread_start") {
+        return {
+          threadId: "thread-new",
+          cwd: "C:/workspace/new",
+          workspaceFallbackUsed: false,
+          workspaceWarning: null,
+        };
+      }
+      if (command === "model_list") {
+        return {
+          models: [
+            {
+              id: "m1",
+              model: "gpt-5",
+              displayName: "gpt-5",
+              isDefault: true,
+              defaultReasoningEffort: "medium",
+              supportedReasoningEfforts: ["low", "medium", "high"],
+            },
+          ],
+        };
+      }
+      if (command === "session_poll_events") {
+        return [];
+      }
+      return undefined;
+    });
+
+    render(<AppShell />);
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { level: 2, name: "Threads" })).toBeVisible();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Create new thread" }));
+    expect(mockedInvoke).not.toHaveBeenCalledWith("thread_start");
+
+    await user.type(screen.getByRole("textbox"), "hello");
+    await user.click(screen.getByRole("button", { name: "Send prompt" }));
+    await waitFor(() => {
+      expect(mockedInvoke).toHaveBeenCalledWith("thread_start");
+      expect(mockedInvoke).toHaveBeenCalledWith("turn_start", {
+        threadId: "thread-new",
+        text: "hello",
+        model: "gpt-5",
+        effort: "medium",
+        personality: "friendly",
+        currentCwd: "C:/workspace/new",
+        overrideCwd: null,
+      });
+    });
+  });
+
+  it("does not resume when selecting the already active thread", async () => {
+    const user = userEvent.setup();
+    mockedInvoke.mockImplementation(async (command) => {
+      if (command === "auth_read_status") {
+        return {
+          state: "loggedIn",
+          accountEmail: "demo@example.com",
+          requiresOpenaiAuth: false,
+          rawAuthMode: "chatgpt",
+          message: null,
+        };
+      }
+      if (command === "thread_list") {
+        return {
+          threads: [{ id: "thread-1", name: null, preview: "first" }],
+        };
+      }
+      if (command === "thread_resume") {
+        return {
+          threadId: "thread-1",
+          cwd: "C:/workspace/thread-1",
+          workspaceFallbackUsed: false,
+          workspaceWarning: null,
+          historyItems: [],
+        };
+      }
+      if (command === "model_list") {
+        return {
+          models: [
+            {
+              id: "m1",
+              model: "gpt-5",
+              displayName: "gpt-5",
+              isDefault: true,
+              defaultReasoningEffort: "medium",
+              supportedReasoningEfforts: ["low", "medium", "high"],
+            },
+          ],
+        };
+      }
+      if (command === "session_poll_events") {
+        return [];
+      }
+      return undefined;
+    });
+
+    render(<AppShell />);
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { level: 2, name: "Threads" })).toBeVisible();
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "first" })).toBeVisible();
+    });
+
+    await user.click(screen.getByRole("button", { name: "first" }));
+    await waitFor(() => {
+      expect(mockedInvoke).toHaveBeenCalledWith("thread_resume", {
+        threadId: "thread-1",
+      });
+    });
+    const resumeCallCountAfterFirstClick = mockedInvoke.mock.calls.filter(
+      ([command]) => command === "thread_resume",
+    ).length;
+
+    await user.click(screen.getByRole("button", { name: "first" }));
+    const resumeCallCountAfterSecondClick = mockedInvoke.mock.calls.filter(
+      ([command]) => command === "thread_resume",
+    ).length;
+    expect(resumeCallCountAfterSecondClick).toBe(resumeCallCountAfterFirstClick);
   });
 
   it("re-reads auth status after login completion success notification", async () => {
@@ -672,6 +844,95 @@ describe("AppShell", () => {
         currentCwd: "C:/workspace/demo",
         overrideCwd: null,
       });
+    });
+  });
+
+  it("refreshes thread title after first agent response", async () => {
+    const user = userEvent.setup();
+    let threadListCount = 0;
+    let started = false;
+    let emittedFirstDelta = false;
+
+    mockedInvoke.mockImplementation(async (command) => {
+      if (command === "auth_read_status") {
+        return {
+          state: "loggedIn",
+          accountEmail: "demo@example.com",
+          requiresOpenaiAuth: false,
+          rawAuthMode: "chatgpt",
+          message: null,
+        };
+      }
+      if (command === "thread_list") {
+        threadListCount += 1;
+        if (threadListCount <= 2) {
+          return { threads: [] };
+        }
+        return {
+          threads: [{ id: "thread-1", name: "Greeting thread", preview: "hello" }],
+        };
+      }
+      if (command === "model_list") {
+        return {
+          models: [
+            {
+              id: "m1",
+              model: "gpt-5",
+              displayName: "gpt-5",
+              isDefault: true,
+              defaultReasoningEffort: "medium",
+              supportedReasoningEfforts: ["low", "medium", "high"],
+            },
+          ],
+        };
+      }
+      if (command === "thread_start") {
+        return {
+          threadId: "thread-1",
+          cwd: "C:/workspace/demo",
+          workspaceFallbackUsed: false,
+          workspaceWarning: null,
+        };
+      }
+      if (command === "turn_start") {
+        started = true;
+        return {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          cwd: "C:/workspace/demo",
+          workspaceFallbackUsed: false,
+          workspaceWarning: null,
+        };
+      }
+      if (command === "session_poll_events") {
+        if (started && !emittedFirstDelta) {
+          emittedFirstDelta = true;
+          return [
+            {
+              kind: "notification",
+              method: "item/agentMessage/delta",
+              params: { delta: "hello" },
+            },
+          ];
+        }
+        return [];
+      }
+      return undefined;
+    });
+
+    render(<AppShell />);
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { level: 2, name: "Threads" })).toBeVisible();
+    });
+
+    await user.type(screen.getByRole("textbox"), "hello");
+    await user.click(screen.getByRole("button", { name: "Send prompt" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("(No title yet)")).toBeVisible();
+    });
+    await waitFor(() => {
+      expect(screen.getByText("Greeting thread")).toBeVisible();
     });
   });
 

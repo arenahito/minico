@@ -404,11 +404,12 @@ pre {
   text-align: left;
   display: grid;
   gap: var(--space-1);
-  padding-right: 44px;
+  padding-right: var(--space-2);
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: transparent;
   box-shadow: none;
+  transition: padding-right 140ms ease;
 }
 
 .thread-panel .thread-list-archive-button {
@@ -435,6 +436,10 @@ pre {
 .thread-list-row:hover .thread-list-archive-button {
   opacity: 1;
   pointer-events: auto;
+}
+
+.thread-list-row:hover .thread-list-item {
+  padding-right: 34px;
 }
 
 .thread-panel .thread-list-archive-button:focus-visible {
