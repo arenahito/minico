@@ -248,6 +248,39 @@ describe("ChatView", () => {
     expect(screen.getByText("second item")).toBeVisible();
   });
 
+  it("renders syntax-highlighted class names for fenced code blocks", () => {
+    const { container } = render(
+      <ChatView
+        turnState={turnState(null)}
+        items={[
+          item({
+            id: "item-agent-highlight",
+            role: "agent",
+            itemType: "agentMessage",
+            text: "```ts\nconst value = 42;\n```",
+          }),
+        ]}
+        threadLoading={false}
+        threadCwd="C:/workspace/demo"
+        composerValue=""
+        selectorLabel="Select model"
+        selectorDisplay="gpt-5 / medium"
+        selectorOptions={[{ value: "gpt-5", label: "gpt-5" }]}
+        selectorValue="gpt-5"
+        busy={false}
+        onComposerChange={vi.fn()}
+        onSelectorChange={vi.fn(() => true)}
+        onCreateThread={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+        onInterrupt={vi.fn()}
+      />,
+    );
+
+    const codeElement = container.querySelector("pre code.hljs.language-ts");
+    expect(codeElement).not.toBeNull();
+    expect(codeElement?.textContent).toContain("const value = 42;");
+  });
+
   it("renders plain URL in user message as clickable link", () => {
     render(
       <ChatView
@@ -280,6 +313,71 @@ describe("ChatView", () => {
     expect(link).toHaveAttribute("href", "https://example.com/docs");
   });
 
+  it("trims trailing quote and bracket punctuation from auto-linked URL", () => {
+    render(
+      <ChatView
+        turnState={turnState(null)}
+        items={[
+          item({
+            id: "item-user-url-trailing",
+            role: "user",
+            itemType: "userMessage",
+            text: "参考: [https://example.com/path\"]",
+          }),
+        ]}
+        threadLoading={false}
+        threadCwd="C:/workspace/demo"
+        composerValue=""
+        selectorLabel="Select model"
+        selectorDisplay="gpt-5 / medium"
+        selectorOptions={[{ value: "gpt-5", label: "gpt-5" }]}
+        selectorValue="gpt-5"
+        busy={false}
+        onComposerChange={vi.fn()}
+        onSelectorChange={vi.fn(() => true)}
+        onCreateThread={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+        onInterrupt={vi.fn()}
+      />,
+    );
+
+    const link = screen.getByRole("link", { name: "https://example.com/path" });
+    expect(link).toHaveAttribute("href", "https://example.com/path");
+    expect(link.closest("p")).toHaveTextContent('参考: [https://example.com/path"]');
+  });
+
+  it("keeps closing bracket in IPv6 host URL", () => {
+    render(
+      <ChatView
+        turnState={turnState(null)}
+        items={[
+          item({
+            id: "item-user-url-ipv6",
+            role: "user",
+            itemType: "userMessage",
+            text: "IPv6 endpoint https://[2001:db8::1]",
+          }),
+        ]}
+        threadLoading={false}
+        threadCwd="C:/workspace/demo"
+        composerValue=""
+        selectorLabel="Select model"
+        selectorDisplay="gpt-5 / medium"
+        selectorOptions={[{ value: "gpt-5", label: "gpt-5" }]}
+        selectorValue="gpt-5"
+        busy={false}
+        onComposerChange={vi.fn()}
+        onSelectorChange={vi.fn(() => true)}
+        onCreateThread={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+        onInterrupt={vi.fn()}
+      />,
+    );
+
+    const link = screen.getByRole("link", { name: "https://[2001:db8::1]" });
+    expect(link).toHaveAttribute("href", "https://[2001:db8::1]");
+  });
+
   it("renders URL inside agent code block as clickable link", () => {
     render(
       <ChatView
@@ -310,6 +408,40 @@ describe("ChatView", () => {
 
     const link = screen.getByRole("link", { name: "https://example.com/in-code" });
     expect(link).toHaveAttribute("href", "https://example.com/in-code");
+  });
+
+  it("keeps URL clickable inside syntax-highlighted code block", () => {
+    const { container } = render(
+      <ChatView
+        turnState={turnState(null)}
+        items={[
+          item({
+            id: "item-agent-code-url-highlight",
+            role: "agent",
+            itemType: "agentMessage",
+            text: "```ts\nconst docsUrl = \"https://example.com/highlighted\";\n```",
+          }),
+        ]}
+        threadLoading={false}
+        threadCwd="C:/workspace/demo"
+        composerValue=""
+        selectorLabel="Select model"
+        selectorDisplay="gpt-5 / medium"
+        selectorOptions={[{ value: "gpt-5", label: "gpt-5" }]}
+        selectorValue="gpt-5"
+        busy={false}
+        onComposerChange={vi.fn()}
+        onSelectorChange={vi.fn(() => true)}
+        onCreateThread={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+        onInterrupt={vi.fn()}
+      />,
+    );
+
+    const highlightedCode = container.querySelector("pre code.hljs.language-ts");
+    expect(highlightedCode).not.toBeNull();
+    const link = screen.getByRole("link", { name: "https://example.com/highlighted" });
+    expect(link).toHaveAttribute("href", "https://example.com/highlighted");
   });
 
   it("shows jump-to-latest button only when stream is not at bottom", () => {

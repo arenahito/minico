@@ -1,4 +1,7 @@
 import {
+  Children,
+  cloneElement,
+  isValidElement,
   useCallback,
   useEffect,
   useMemo,
@@ -14,6 +17,7 @@ import type { TurnStreamItem, TurnStreamState } from "../../core/chat/turnReduce
 import { ArrowDown, ChevronDown, FolderOpen, ListPlus, Paperclip, Send, Square, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
+import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 
 export interface ComposerSelectOption {
@@ -75,12 +79,19 @@ function splitTrailingPunctuation(urlLiteral: string): { url: string; trailing: 
 
   while (url.length > 0) {
     const lastChar = url.slice(-1);
-    if (!/[),.!?:;]/.test(lastChar)) {
+    if (!/[),.!?:;"'\]]/.test(lastChar)) {
       break;
     }
     if (lastChar === ")") {
       const openCount = (url.match(/\(/g) ?? []).length;
       const closeCount = (url.match(/\)/g) ?? []).length;
+      if (closeCount <= openCount) {
+        break;
+      }
+    }
+    if (lastChar === "]") {
+      const openCount = (url.match(/\[/g) ?? []).length;
+      const closeCount = (url.match(/\]/g) ?? []).length;
       if (closeCount <= openCount) {
         break;
       }
@@ -92,7 +103,7 @@ function splitTrailingPunctuation(urlLiteral: string): { url: string; trailing: 
   return { url, trailing };
 }
 
-function renderTextWithAutoLinks(text: string): ReactNode[] {
+function renderTextWithAutoLinks(text: string, keyPrefix = "auto-link"): ReactNode[] {
   const nodes: ReactNode[] = [];
   let cursor = 0;
 
@@ -109,7 +120,7 @@ function renderTextWithAutoLinks(text: string): ReactNode[] {
     if (url.length > 0) {
       nodes.push(
         <a
-          key={`auto-link-${index}-${url}`}
+          key={`${keyPrefix}-${index}-${url}`}
           href={url}
           target="_blank"
           rel="noreferrer noopener"
@@ -131,9 +142,44 @@ function renderTextWithAutoLinks(text: string): ReactNode[] {
   return nodes;
 }
 
+function renderCodeChildrenWithAutoLinks(children: ReactNode, keyPrefix: string): ReactNode {
+  if (typeof children === "string" || typeof children === "number") {
+    return renderTextWithAutoLinks(String(children), `${keyPrefix}-text`);
+  }
+
+  if (Array.isArray(children)) {
+    return children.map((child, index) => renderCodeChildrenWithAutoLinks(child, `${keyPrefix}-${index}`));
+  }
+
+  if (!isValidElement<{ children?: ReactNode }>(children)) {
+    return children;
+  }
+
+  if (children.type === "a") {
+    return children;
+  }
+
+  const originalChildren = children.props.children;
+  if (originalChildren === undefined) {
+    return children;
+  }
+
+  return cloneElement(
+    children,
+    undefined,
+    renderCodeChildrenWithAutoLinks(originalChildren, `${keyPrefix}-child`),
+  );
+}
+
 const markdownComponents: Components = {
-  code({ children, className, inline, node: _node, ...props }) {
-    const isInline = Boolean(inline);
+  code({ children, className, node: _node, ...props }) {
+    const childNodes = Children.toArray(children);
+    const plainTextOnly = childNodes.every(
+      (child) => typeof child === "string" || typeof child === "number",
+    );
+    const textContent = plainTextOnly ? childNodes.map((child) => String(child)).join("") : "";
+    const hasLanguageClass = typeof className === "string" && /\blanguage-/.test(className);
+    const isInline = plainTextOnly && !hasLanguageClass && !textContent.includes("\n");
     if (isInline) {
       return (
         <code className={className} {...props}>
@@ -142,7 +188,14 @@ const markdownComponents: Components = {
       );
     }
 
-    const content = String(children ?? "");
+    if (!plainTextOnly) {
+      return (
+        <code className={className} {...props}>
+          {renderCodeChildrenWithAutoLinks(children, "code")}
+        </code>
+      );
+    }
+    const content = textContent;
     return (
       <code className={className} {...props}>
         {renderTextWithAutoLinks(content)}
@@ -797,6 +850,7 @@ export function ChatView({
                       <div className="chat-item-body chat-item-markdown">
                         <ReactMarkdown
                           remarkPlugins={[remarkGfm]}
+                          rehypePlugins={[rehypeHighlight]}
                           components={markdownComponents}
                         >
                           {item.text || "..."}

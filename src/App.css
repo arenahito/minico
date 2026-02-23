@@ -770,6 +770,44 @@ pre {
   padding: 0;
 }
 
+.chat-item-markdown pre code.hljs {
+  display: block;
+  color: #243044;
+}
+
+.chat-item-markdown pre code .hljs-comment,
+.chat-item-markdown pre code .hljs-quote {
+  color: #6f7687;
+}
+
+.chat-item-markdown pre code .hljs-keyword,
+.chat-item-markdown pre code .hljs-selector-tag,
+.chat-item-markdown pre code .hljs-literal,
+.chat-item-markdown pre code .hljs-type {
+  color: #2e5ea7;
+}
+
+.chat-item-markdown pre code .hljs-string,
+.chat-item-markdown pre code .hljs-doctag,
+.chat-item-markdown pre code .hljs-title.class_,
+.chat-item-markdown pre code .hljs-section {
+  color: #0f7a57;
+}
+
+.chat-item-markdown pre code .hljs-title.function_,
+.chat-item-markdown pre code .hljs-function .hljs-title,
+.chat-item-markdown pre code .hljs-attr,
+.chat-item-markdown pre code .hljs-property {
+  color: #1f4f93;
+}
+
+.chat-item-markdown pre code .hljs-number,
+.chat-item-markdown pre code .hljs-symbol,
+.chat-item-markdown pre code .hljs-variable,
+.chat-item-markdown pre code .hljs-params {
+  color: #8f5b16;
+}
+
 :root[data-theme="dark"] .chat-item-markdown code {
   background: color-mix(in srgb, var(--bg-panel-2) 90%, var(--fg-default));
   border: 0;
@@ -780,6 +818,43 @@ pre {
   border-color: color-mix(in srgb, var(--border-strong) 74%, var(--fg-default));
   background: color-mix(in srgb, var(--bg-panel-2) 84%, var(--fg-default));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border-default) 62%, var(--fg-default));
+}
+
+:root[data-theme="dark"] .chat-item-markdown pre code.hljs {
+  color: #dce5f6;
+}
+
+:root[data-theme="dark"] .chat-item-markdown pre code .hljs-comment,
+:root[data-theme="dark"] .chat-item-markdown pre code .hljs-quote {
+  color: #8f9ab0;
+}
+
+:root[data-theme="dark"] .chat-item-markdown pre code .hljs-keyword,
+:root[data-theme="dark"] .chat-item-markdown pre code .hljs-selector-tag,
+:root[data-theme="dark"] .chat-item-markdown pre code .hljs-literal,
+:root[data-theme="dark"] .chat-item-markdown pre code .hljs-type {
+  color: #8bb4ff;
+}
+
+:root[data-theme="dark"] .chat-item-markdown pre code .hljs-string,
+:root[data-theme="dark"] .chat-item-markdown pre code .hljs-doctag,
+:root[data-theme="dark"] .chat-item-markdown pre code .hljs-title.class_,
+:root[data-theme="dark"] .chat-item-markdown pre code .hljs-section {
+  color: #87dba0;
+}
+
+:root[data-theme="dark"] .chat-item-markdown pre code .hljs-title.function_,
+:root[data-theme="dark"] .chat-item-markdown pre code .hljs-function .hljs-title,
+:root[data-theme="dark"] .chat-item-markdown pre code .hljs-attr,
+:root[data-theme="dark"] .chat-item-markdown pre code .hljs-property {
+  color: #9ac7ff;
+}
+
+:root[data-theme="dark"] .chat-item-markdown pre code .hljs-number,
+:root[data-theme="dark"] .chat-item-markdown pre code .hljs-symbol,
+:root[data-theme="dark"] .chat-item-markdown pre code .hljs-variable,
+:root[data-theme="dark"] .chat-item-markdown pre code .hljs-params {
+  color: #f3bf73;
 }
 
 .chat-item-state {
