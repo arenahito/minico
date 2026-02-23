@@ -1,49 +1,34 @@
 # minico
 
-Friendly desktop chat client for Codex app-server.
+Your personal desktop AI companion—simple, smart, and easy to use.
 
-minico focuses on a smooth local chat workflow with thread history, model/effort selection, file attachments, and workspace-aware turns.
+> [!IMPORTANT]
+> **Early Development**: minico is currently in active development. Features may change, and you might encounter bugs. We appreciate your feedback!
 
-## What is this?
+minico provides a seamless local chat experience with instant model switching, easy file attachments, and workspace-aware turns.
 
-minico is a Tauri desktop app that talks to `codex app-server` and provides a chat UI on top of it.
+## What is minico?
 
-It is designed for everyday use:
+minico is a desktop app that makes chatting with AI simple and organized. It’s designed to fit into your daily workflow without the complexity of traditional tools.
 
-- Chat with Codex from a desktop UI
-- Manage thread history (refresh, load more, archive)
-- Select model and reasoning effort from one control
-- Attach files/images (picker + drag and drop)
-- Override thread working directory per next turn
-- Configure CODEX_HOME, workspace, personality, theme, and diagnostics level
+- **Instant Model Switching**: Quickly change models and reasoning effort to suit your task.
+- **Smart Workspace Integration**: Keep your work context-aware with thread-specific directory settings.
+- **Easy File Sharing**: Just drag and drop images or files to share them with the AI.
+- **Clean & Simple**: A beautiful, intuitive interface designed for your daily workflow.
+- **Personalized**: Customize the AI’s personality, app theme, and settings to make it yours.
 
-## Requirements
 
-- Node.js (LTS recommended)
-- pnpm
-- Rust toolchain (for Tauri build/run)
-- Codex CLI available in `PATH` or configured explicitly in settings
+## Getting Started
 
-## Installation
+Before you begin, please ensure you have the [Codex CLI](https://github.com/openai/codex) installed on your computer. minico uses the Codex engine to power its conversations.
 
-```bash
-git clone <this-repository>
-cd minico
-pnpm install
-```
+### First Launch
 
-## Run minico
-
-```bash
-pnpm tauri:dev
-```
-
-## First Launch
-
-1. Wait for startup checks to complete.
-2. On `Login required`, confirm `CODEX_HOME` if needed.
-3. Click `Continue with ChatGPT` and complete browser login.
-4. Return to minico and start chatting.
+1. **Install Codex CLI**: Follow the instructions at the [Codex repository](https://github.com/openai/codex) to set it up.
+2. **Launch minico**: Open the app and wait for the initial startup checks.
+3. **Set Up Home**: On `Login required`, confirm your `CODEX_HOME` directory if prompted.
+4. **Sign In**: Click `Continue with ChatGPT` to complete the login in your browser.
+5. **Start Chatting**: Return to minico and you’re ready to go!
 
 ## Basic Usage
 
@@ -61,12 +46,13 @@ pnpm tauri:dev
 - Default `CODEX_HOME`: `~/.minico/codex`
 - Default workspace: `~/.minico/workspace`
 
+> [!NOTE]
+> By default, minico uses isolated internal storage (`~/.minico/codex`) for its engine settings. This is separate from the standard Codex CLI location (`~/.codex`).
+>
+> If you want to use your existing Codex settings, you can change the `CODEX_HOME` path in the **Settings** dialog. Otherwise, you will need to complete the login/setup process again within minico.
+
 Most settings can be changed from the Settings dialog and are saved immediately.
 
-## Diagnostics
-
-- Export diagnostics logs from Settings.
-- You can also change diagnostics log level from Settings.
 
 ## For Developers
 
@@ -76,10 +62,22 @@ Most settings can be changed from the Settings dialog and are saved immediately.
 - React + TypeScript (frontend)
 - Vitest + Testing Library (frontend tests)
 
-### Development Setup
+### Requirements
+
+- Node.js (LTS recommended)
+- pnpm
+- Rust toolchain (for Tauri build/run)
+- Codex CLI available in `PATH` or configured explicitly in settings
+
+### Setup & Run
 
 ```bash
+# Clone and install dependencies
+git clone <this-repository>
+cd minico
 pnpm install
+
+# Run in development mode
 pnpm tauri:dev
 ```
 
@@ -97,7 +95,3 @@ pnpm rust:test
 pnpm tauri:build
 ```
 
-### Additional Docs
-
-- `docs/v0/verification.md`
-- `docs/v0/error-catalog.md`
