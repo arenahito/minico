@@ -53,6 +53,10 @@ const snapshot: SettingsSnapshot = {
 };
 
 describe("SettingsView", () => {
+  async function waitForSettingsForm() {
+    await screen.findByLabelText(/Codex executable path/i);
+  }
+
   afterEach(() => {
     cleanup();
   });
@@ -85,7 +89,7 @@ describe("SettingsView", () => {
 
   it("loads settings at mount", async () => {
     render(<SettingsView />);
-    await screen.findByRole("heading", { level: 2, name: "Settings" });
+    await waitForSettingsForm();
     expect(loadSettings).toHaveBeenCalledTimes(1);
     expect(screen.getByDisplayValue("info")).toBeVisible();
     expect(screen.getByDisplayValue("C:/Users/test/.minico/codex")).toBeVisible();
@@ -93,7 +97,7 @@ describe("SettingsView", () => {
 
   it("saves updated text values on blur", async () => {
     render(<SettingsView />);
-    await screen.findByRole("heading", { level: 2, name: "Settings" });
+    await waitForSettingsForm();
 
     const codexPathInput = screen.getByLabelText(/Codex executable path/i);
     fireEvent.change(codexPathInput, {
@@ -117,7 +121,7 @@ describe("SettingsView", () => {
 
   it("saves selected codex personality immediately", async () => {
     render(<SettingsView />);
-    await screen.findByRole("heading", { level: 2, name: "Settings" });
+    await waitForSettingsForm();
 
     fireEvent.change(screen.getByLabelText(/Codex personality/i), {
       target: { value: "pragmatic" },
@@ -132,7 +136,7 @@ describe("SettingsView", () => {
 
   it("saves selected theme immediately", async () => {
     render(<SettingsView />);
-    await screen.findByRole("heading", { level: 2, name: "Settings" });
+    await waitForSettingsForm();
 
     fireEvent.change(screen.getByLabelText(/^Theme$/i), {
       target: { value: "dark" },
@@ -151,7 +155,7 @@ describe("SettingsView", () => {
       message: "Configured codex path does not exist",
     });
     render(<SettingsView />);
-    await screen.findByRole("heading", { level: 2, name: "Settings" });
+    await waitForSettingsForm();
 
     const codexPathInput = screen.getByLabelText(/Codex executable path/i);
     fireEvent.change(codexPathInput, {
@@ -199,7 +203,7 @@ describe("SettingsView", () => {
       warning: "Stored workspace path was unavailable. Fallback to default workspace.",
     });
     render(<SettingsView />);
-    await screen.findByRole("heading", { level: 2, name: "Settings" });
+    await waitForSettingsForm();
 
     fireEvent.change(screen.getByLabelText(/Codex personality/i), {
       target: { value: "pragmatic" },
@@ -214,7 +218,7 @@ describe("SettingsView", () => {
 
   it("exports diagnostics log path", async () => {
     render(<SettingsView />);
-    await screen.findByRole("heading", { level: 2, name: "Settings" });
+    await waitForSettingsForm();
 
     fireEvent.click(screen.getByRole("button", { name: "Export diagnostics" }));
 
@@ -227,7 +231,7 @@ describe("SettingsView", () => {
   it("opens workspace picker with current input path and applies selected path", async () => {
     openDialog.mockResolvedValueOnce("D:/picked/workspace");
     render(<SettingsView />);
-    await screen.findByRole("heading", { level: 2, name: "Settings" });
+    await waitForSettingsForm();
 
     const workspaceInput = screen.getByLabelText(/Workspace path/i);
     fireEvent.change(workspaceInput, {
@@ -248,7 +252,7 @@ describe("SettingsView", () => {
   it("opens CODEX_HOME picker with current input path and applies selected path", async () => {
     openDialog.mockResolvedValueOnce("D:/picked/codex-home");
     render(<SettingsView />);
-    await screen.findByRole("heading", { level: 2, name: "Settings" });
+    await waitForSettingsForm();
 
     fireEvent.change(screen.getByLabelText(/^CODEX_HOME$/i), {
       target: { value: "D:/custom/codex-home" },
@@ -268,7 +272,7 @@ describe("SettingsView", () => {
 
   it("resets CODEX_HOME to default when using reset button", async () => {
     render(<SettingsView />);
-    await screen.findByRole("heading", { level: 2, name: "Settings" });
+    await waitForSettingsForm();
 
     fireEvent.change(screen.getByLabelText(/^CODEX_HOME$/i), {
       target: { value: "D:/custom/codex-home" },
@@ -286,7 +290,7 @@ describe("SettingsView", () => {
 
   it("shows toast when resetting workspace path to default", async () => {
     render(<SettingsView />);
-    await screen.findByRole("heading", { level: 2, name: "Settings" });
+    await waitForSettingsForm();
 
     fireEvent.click(screen.getByRole("button", { name: "Use default workspace" }));
 
