@@ -445,6 +445,7 @@ pre {
 }
 
 .chat-stream {
+  height: 100%;
   min-height: 0;
   overflow: auto;
   display: flex;
@@ -453,9 +454,22 @@ pre {
   padding-right: var(--space-2);
 }
 
+.chat-stream-wrap {
+  min-height: 0;
+  position: relative;
+}
+
 .chat-stream.is-empty {
   justify-content: center;
   align-items: center;
+}
+
+.chat-scroll-to-bottom {
+  position: absolute;
+  right: calc(var(--space-3) + 12px);
+  bottom: var(--space-3);
+  z-index: 2;
+  box-shadow: 0 8px 18px rgba(18, 26, 33, 0.2);
 }
 
 .chat-empty-placeholder {
@@ -556,8 +570,16 @@ pre {
 
 .chat-item-body {
   margin: 0;
+  line-height: 1.7;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.chat-item-body a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  word-break: break-all;
 }
 
 .chat-user-message {
@@ -667,8 +689,21 @@ pre {
 
 .chat-item-markdown pre code {
   background: transparent;
+  border: 0;
   border-radius: 0;
   padding: 0;
+}
+
+:root[data-theme="dark"] .chat-item-markdown code {
+  background: color-mix(in srgb, var(--bg-panel-2) 90%, var(--fg-default));
+  border: 0;
+  color: var(--fg-default);
+}
+
+:root[data-theme="dark"] .chat-item-markdown pre {
+  border-color: color-mix(in srgb, var(--border-strong) 74%, var(--fg-default));
+  background: color-mix(in srgb, var(--bg-panel-2) 84%, var(--fg-default));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border-default) 62%, var(--fg-default));
 }
 
 .chat-item-state {

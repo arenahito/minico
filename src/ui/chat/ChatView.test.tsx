@@ -57,6 +57,25 @@ function buildDropDataTransfer(paths: string[]): DataTransfer {
   } as unknown as DataTransfer;
 }
 
+function setChatStreamMetrics(
+  element: HTMLElement,
+  metrics: { scrollHeight: number; clientHeight: number; scrollTop: number },
+): void {
+  Object.defineProperty(element, "scrollHeight", {
+    configurable: true,
+    value: metrics.scrollHeight,
+  });
+  Object.defineProperty(element, "clientHeight", {
+    configurable: true,
+    value: metrics.clientHeight,
+  });
+  Object.defineProperty(element, "scrollTop", {
+    configurable: true,
+    writable: true,
+    value: metrics.scrollTop,
+  });
+}
+
 afterEach(() => {
   cleanup();
 });
@@ -227,6 +246,225 @@ describe("ChatView", () => {
     expect(screen.getByText("bold", { selector: "strong" })).toBeVisible();
     expect(screen.getByText("first item")).toBeVisible();
     expect(screen.getByText("second item")).toBeVisible();
+  });
+
+  it("renders plain URL in user message as clickable link", () => {
+    render(
+      <ChatView
+        turnState={turnState(null)}
+        items={[
+          item({
+            id: "item-user-url",
+            role: "user",
+            itemType: "userMessage",
+            text: "詳細はこちら https://example.com/docs",
+          }),
+        ]}
+        threadLoading={false}
+        threadCwd="C:/workspace/demo"
+        composerValue=""
+        selectorLabel="Select model"
+        selectorDisplay="gpt-5 / medium"
+        selectorOptions={[{ value: "gpt-5", label: "gpt-5" }]}
+        selectorValue="gpt-5"
+        busy={false}
+        onComposerChange={vi.fn()}
+        onSelectorChange={vi.fn(() => true)}
+        onCreateThread={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+        onInterrupt={vi.fn()}
+      />,
+    );
+
+    const link = screen.getByRole("link", { name: "https://example.com/docs" });
+    expect(link).toHaveAttribute("href", "https://example.com/docs");
+  });
+
+  it("renders URL inside agent code block as clickable link", () => {
+    render(
+      <ChatView
+        turnState={turnState(null)}
+        items={[
+          item({
+            id: "item-agent-code-url",
+            role: "agent",
+            itemType: "agentMessage",
+            text: "```text\nhttps://example.com/in-code\n```",
+          }),
+        ]}
+        threadLoading={false}
+        threadCwd="C:/workspace/demo"
+        composerValue=""
+        selectorLabel="Select model"
+        selectorDisplay="gpt-5 / medium"
+        selectorOptions={[{ value: "gpt-5", label: "gpt-5" }]}
+        selectorValue="gpt-5"
+        busy={false}
+        onComposerChange={vi.fn()}
+        onSelectorChange={vi.fn(() => true)}
+        onCreateThread={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+        onInterrupt={vi.fn()}
+      />,
+    );
+
+    const link = screen.getByRole("link", { name: "https://example.com/in-code" });
+    expect(link).toHaveAttribute("href", "https://example.com/in-code");
+  });
+
+  it("shows jump-to-latest button only when stream is not at bottom", () => {
+    render(
+      <ChatView
+        turnState={turnState(null)}
+        items={[item({ id: "item-2", text: "existing response" })]}
+        threadLoading={false}
+        threadCwd="C:/workspace/demo"
+        composerValue=""
+        selectorLabel="Select model"
+        selectorDisplay="gpt-5 / medium"
+        selectorOptions={[{ value: "gpt-5", label: "gpt-5" }]}
+        selectorValue="gpt-5"
+        busy={false}
+        onComposerChange={vi.fn()}
+        onSelectorChange={vi.fn(() => true)}
+        onCreateThread={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+        onInterrupt={vi.fn()}
+      />,
+    );
+
+    const stream = screen.getByLabelText("chat messages");
+    setChatStreamMetrics(stream, { scrollHeight: 1000, clientHeight: 300, scrollTop: 700 });
+    fireEvent.scroll(stream);
+    expect(screen.queryByRole("button", { name: "Scroll to latest messages" })).toBeNull();
+
+    setChatStreamMetrics(stream, { scrollHeight: 1000, clientHeight: 300, scrollTop: 120 });
+    fireEvent.scroll(stream);
+    expect(screen.getByRole("button", { name: "Scroll to latest messages" })).toBeVisible();
+
+    setChatStreamMetrics(stream, { scrollHeight: 1000, clientHeight: 300, scrollTop: 700 });
+    fireEvent.scroll(stream);
+    expect(screen.queryByRole("button", { name: "Scroll to latest messages" })).toBeNull();
+  });
+
+  it("auto-scrolls on new items when stream is already at bottom", async () => {
+    const scrollToMock = vi.fn();
+    const { rerender } = render(
+      <ChatView
+        turnState={turnState(null)}
+        items={[item({ id: "item-3", text: "first response" })]}
+        threadLoading={false}
+        threadCwd="C:/workspace/demo"
+        composerValue=""
+        selectorLabel="Select model"
+        selectorDisplay="gpt-5 / medium"
+        selectorOptions={[{ value: "gpt-5", label: "gpt-5" }]}
+        selectorValue="gpt-5"
+        busy={false}
+        onComposerChange={vi.fn()}
+        onSelectorChange={vi.fn(() => true)}
+        onCreateThread={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+        onInterrupt={vi.fn()}
+      />,
+    );
+
+    const stream = screen.getByLabelText("chat messages");
+    Object.defineProperty(stream, "scrollTo", {
+      configurable: true,
+      value: scrollToMock,
+    });
+    setChatStreamMetrics(stream, { scrollHeight: 1000, clientHeight: 300, scrollTop: 700 });
+    fireEvent.scroll(stream);
+    scrollToMock.mockClear();
+
+    setChatStreamMetrics(stream, { scrollHeight: 1200, clientHeight: 300, scrollTop: 700 });
+    rerender(
+      <ChatView
+        turnState={turnState(null)}
+        items={[
+          item({ id: "item-3", text: "first response" }),
+          item({ id: "item-4", text: "second response" }),
+        ]}
+        threadLoading={false}
+        threadCwd="C:/workspace/demo"
+        composerValue=""
+        selectorLabel="Select model"
+        selectorDisplay="gpt-5 / medium"
+        selectorOptions={[{ value: "gpt-5", label: "gpt-5" }]}
+        selectorValue="gpt-5"
+        busy={false}
+        onComposerChange={vi.fn()}
+        onSelectorChange={vi.fn(() => true)}
+        onCreateThread={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+        onInterrupt={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(scrollToMock).toHaveBeenCalledWith({ top: 1200, behavior: "auto" });
+    });
+  });
+
+  it("does not auto-scroll on new items when stream is not at bottom", async () => {
+    const scrollToMock = vi.fn();
+    const { rerender } = render(
+      <ChatView
+        turnState={turnState(null)}
+        items={[item({ id: "item-5", text: "first response" })]}
+        threadLoading={false}
+        threadCwd="C:/workspace/demo"
+        composerValue=""
+        selectorLabel="Select model"
+        selectorDisplay="gpt-5 / medium"
+        selectorOptions={[{ value: "gpt-5", label: "gpt-5" }]}
+        selectorValue="gpt-5"
+        busy={false}
+        onComposerChange={vi.fn()}
+        onSelectorChange={vi.fn(() => true)}
+        onCreateThread={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+        onInterrupt={vi.fn()}
+      />,
+    );
+
+    const stream = screen.getByLabelText("chat messages");
+    Object.defineProperty(stream, "scrollTo", {
+      configurable: true,
+      value: scrollToMock,
+    });
+    setChatStreamMetrics(stream, { scrollHeight: 1000, clientHeight: 300, scrollTop: 100 });
+    fireEvent.scroll(stream);
+    scrollToMock.mockClear();
+
+    setChatStreamMetrics(stream, { scrollHeight: 1200, clientHeight: 300, scrollTop: 100 });
+    rerender(
+      <ChatView
+        turnState={turnState(null)}
+        items={[
+          item({ id: "item-5", text: "first response" }),
+          item({ id: "item-6", text: "second response" }),
+        ]}
+        threadLoading={false}
+        threadCwd="C:/workspace/demo"
+        composerValue=""
+        selectorLabel="Select model"
+        selectorDisplay="gpt-5 / medium"
+        selectorOptions={[{ value: "gpt-5", label: "gpt-5" }]}
+        selectorValue="gpt-5"
+        busy={false}
+        onComposerChange={vi.fn()}
+        onSelectorChange={vi.fn(() => true)}
+        onCreateThread={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+        onInterrupt={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(scrollToMock).not.toHaveBeenCalled();
+    });
   });
 
   it("submits prompt with ctrl+enter", () => {

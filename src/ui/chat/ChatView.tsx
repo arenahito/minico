@@ -4,14 +4,16 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
   type DragEvent as ReactDragEvent,
 } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { open } from "@tauri-apps/plugin-dialog";
 import type { TurnStreamItem, TurnStreamState } from "../../core/chat/turnReducer";
-import { ChevronDown, FolderOpen, ListPlus, Paperclip, Send, Square, X } from "lucide-react";
+import { ArrowDown, ChevronDown, FolderOpen, ListPlus, Paperclip, Send, Square, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import type { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 export interface ComposerSelectOption {
@@ -59,6 +61,95 @@ interface ParsedMessageAttachment {
 }
 
 const USER_ATTACHMENT_TOKEN_PREFIX_RE = /^\[@([^\]]+)\]\((file:\/\/[^\s)]+)\)\s*/i;
+const STREAM_BOTTOM_THRESHOLD_PX = 16;
+const URL_LITERAL_RE = /https?:\/\/[^\s]+/g;
+
+function isStreamAtBottom(element: HTMLElement): boolean {
+  const distanceToBottom = element.scrollHeight - element.scrollTop - element.clientHeight;
+  return distanceToBottom <= STREAM_BOTTOM_THRESHOLD_PX;
+}
+
+function splitTrailingPunctuation(urlLiteral: string): { url: string; trailing: string } {
+  let url = urlLiteral;
+  let trailing = "";
+
+  while (url.length > 0) {
+    const lastChar = url.slice(-1);
+    if (!/[),.!?:;]/.test(lastChar)) {
+      break;
+    }
+    if (lastChar === ")") {
+      const openCount = (url.match(/\(/g) ?? []).length;
+      const closeCount = (url.match(/\)/g) ?? []).length;
+      if (closeCount <= openCount) {
+        break;
+      }
+    }
+    trailing = `${lastChar}${trailing}`;
+    url = url.slice(0, -1);
+  }
+
+  return { url, trailing };
+}
+
+function renderTextWithAutoLinks(text: string): ReactNode[] {
+  const nodes: ReactNode[] = [];
+  let cursor = 0;
+
+  for (const match of text.matchAll(URL_LITERAL_RE)) {
+    const raw = match[0];
+    const index = match.index ?? -1;
+    if (!raw || index < 0) {
+      continue;
+    }
+    if (index > cursor) {
+      nodes.push(text.slice(cursor, index));
+    }
+    const { url, trailing } = splitTrailingPunctuation(raw);
+    if (url.length > 0) {
+      nodes.push(
+        <a
+          key={`auto-link-${index}-${url}`}
+          href={url}
+          target="_blank"
+          rel="noreferrer noopener"
+        >
+          {url}
+        </a>,
+      );
+    }
+    if (trailing.length > 0) {
+      nodes.push(trailing);
+    }
+    cursor = index + raw.length;
+  }
+
+  if (cursor < text.length) {
+    nodes.push(text.slice(cursor));
+  }
+
+  return nodes;
+}
+
+const markdownComponents: Components = {
+  code({ children, className, inline, node: _node, ...props }) {
+    const isInline = Boolean(inline);
+    if (isInline) {
+      return (
+        <code className={className} {...props}>
+          {children}
+        </code>
+      );
+    }
+
+    const content = String(children ?? "");
+    return (
+      <code className={className} {...props}>
+        {renderTextWithAutoLinks(content)}
+      </code>
+    );
+  },
+};
 
 function isImageName(name: string): boolean {
   return /\.(apng|avif|bmp|gif|heic|heif|ico|jpe?g|png|svg|webp)$/i.test(name);
@@ -284,10 +375,13 @@ export function ChatView({
   onInterrupt,
 }: ChatViewProps) {
   const selectorRootRef = useRef<HTMLDivElement | null>(null);
+  const chatStreamRef = useRef<HTMLDivElement | null>(null);
   const attachmentsRef = useRef<ComposerAttachment[]>([]);
+  const streamAtBottomRef = useRef(true);
   const wasBusyRef = useRef(false);
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const [dropActive, setDropActive] = useState(false);
+  const [streamAtBottom, setStreamAtBottom] = useState(true);
   const [selectorOpen, setSelectorOpen] = useState(false);
   const composedPrompt = useMemo(() => {
     const tokens = attachments.map((attachment) => attachment.token);
@@ -325,6 +419,7 @@ export function ChatView({
   const showAgentTypingIndicator =
     !threadLoading && Boolean(turnState.activeTurnId) && !hasPendingAgentItem;
   const showEmptyPlaceholder = renderedItems.length === 0 && !showAgentTypingIndicator;
+  const showScrollToBottomButton = !threadLoading && renderedItems.length > 0 && !streamAtBottom;
   const imageAttachments = attachments.filter(
     (attachment) => attachment.kind === "image",
   );
@@ -470,6 +565,38 @@ export function ChatView({
     });
   }
 
+  const syncStreamBottomState = useCallback((): void => {
+    const stream = chatStreamRef.current;
+    if (!stream) {
+      return;
+    }
+    const atBottom = isStreamAtBottom(stream);
+    streamAtBottomRef.current = atBottom;
+    setStreamAtBottom((current) => (current === atBottom ? current : atBottom));
+  }, []);
+
+  const scrollToLatestMessage = useCallback(
+    (behavior: ScrollBehavior): void => {
+      const stream = chatStreamRef.current;
+      if (!stream) {
+        return;
+      }
+      const nextTop = stream.scrollHeight;
+      if (typeof stream.scrollTo === "function") {
+        stream.scrollTo({ top: nextTop, behavior });
+      } else {
+        stream.scrollTop = nextTop;
+      }
+      streamAtBottomRef.current = true;
+      setStreamAtBottom(true);
+    },
+    [],
+  );
+
+  const handleChatStreamScroll = useCallback((): void => {
+    syncStreamBottomState();
+  }, [syncStreamBottomState]);
+
   useEffect(() => {
     function handleOutsidePointer(event: MouseEvent): void {
       if (!selectorRootRef.current) {
@@ -511,6 +638,26 @@ export function ChatView({
       attachmentsRef.current.forEach(releaseAttachmentPreview);
     };
   }, []);
+
+  useEffect(() => {
+    if (threadLoading) {
+      streamAtBottomRef.current = true;
+      setStreamAtBottom(true);
+      return;
+    }
+    syncStreamBottomState();
+  }, [syncStreamBottomState, threadLoading]);
+
+  useEffect(() => {
+    if (threadLoading) {
+      return;
+    }
+    if (streamAtBottomRef.current) {
+      scrollToLatestMessage("auto");
+      return;
+    }
+    syncStreamBottomState();
+  }, [renderedItems, scrollToLatestMessage, showAgentTypingIndicator, syncStreamBottomState, threadLoading]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -578,112 +725,135 @@ export function ChatView({
         </div>
       ) : (
         <>
-          <div
-            className={`chat-stream ${showEmptyPlaceholder ? "is-empty" : ""}`}
-            aria-live="polite"
-          >
-            {renderedItems.map((item) => {
-              const parsedUserMessage =
-                item.role === "user" ? parseMessageAttachmentPrefix(item.text) : null;
-              const userImageAttachments = parsedUserMessage
-                ? parsedUserMessage.attachments.filter((attachment) => attachment.kind === "image")
-                : [];
-              const userFileAttachments = parsedUserMessage
-                ? parsedUserMessage.attachments.filter((attachment) => attachment.kind === "file")
-                : [];
+          <div className="chat-stream-wrap">
+            <div
+              ref={chatStreamRef}
+              className={`chat-stream ${showEmptyPlaceholder ? "is-empty" : ""}`}
+              aria-live="polite"
+              aria-label="chat messages"
+              onScroll={handleChatStreamScroll}
+            >
+              {renderedItems.map((item) => {
+                const parsedUserMessage =
+                  item.role === "user" ? parseMessageAttachmentPrefix(item.text) : null;
+                const userImageAttachments = parsedUserMessage
+                  ? parsedUserMessage.attachments.filter((attachment) => attachment.kind === "image")
+                  : [];
+                const userFileAttachments = parsedUserMessage
+                  ? parsedUserMessage.attachments.filter((attachment) => attachment.kind === "file")
+                  : [];
 
-              return (
-                <article
-                  key={item.id}
-                  className={`chat-item ${item.role === "user" ? "chat-item-user" : "chat-item-agent"}`}
-                >
-                  {item.role === "user" ? (
-                    <div className="chat-user-message">
-                      {userImageAttachments.length > 0 ? (
-                        <div className="chat-item-image-attachments" aria-label="Message image attachments">
-                          {userImageAttachments.map((attachment) => (
-                            <article key={attachment.key} className="chat-item-image-attachment">
-                              <img
-                                src={attachment.previewUrl ?? ""}
-                                alt={attachment.name}
-                                onError={(event) => {
-                                  const target = event.currentTarget;
-                                  if (target.dataset.fallbackApplied === "true") {
-                                    return;
-                                  }
-                                  target.dataset.fallbackApplied = "true";
-                                  target.src = attachment.uri;
-                                }}
-                              />
-                            </article>
-                          ))}
-                        </div>
-                      ) : null}
-                      {userFileAttachments.length > 0 ? (
-                        <div className="chat-item-inline-file-blocks" aria-label="Message file attachments">
-                          {userFileAttachments.map((attachment) => (
-                            <article key={attachment.key} className="chat-item-inline-file-block">
-                              <Paperclip size={14} aria-hidden="true" />
-                              <code title={attachment.displayPath}>{attachment.displayPath}</code>
-                            </article>
-                          ))}
-                        </div>
-                      ) : null}
-                      {parsedUserMessage && parsedUserMessage.bodyText.length > 0 ? (
-                        <p className="chat-item-body">{parsedUserMessage.bodyText}</p>
-                      ) : null}
-                      {!parsedUserMessage ||
-                      (parsedUserMessage.attachments.length === 0 &&
-                        parsedUserMessage.bodyText.length === 0) ? (
-                        <p className="chat-item-body">...</p>
-                      ) : null}
-                    </div>
-                  ) : (
-                    <>
+                return (
+                  <article
+                    key={item.id}
+                    className={`chat-item ${item.role === "user" ? "chat-item-user" : "chat-item-agent"}`}
+                  >
+                    {item.role === "user" ? (
+                      <div className="chat-user-message">
+                        {userImageAttachments.length > 0 ? (
+                          <div className="chat-item-image-attachments" aria-label="Message image attachments">
+                            {userImageAttachments.map((attachment) => (
+                              <article key={attachment.key} className="chat-item-image-attachment">
+                                <img
+                                  src={attachment.previewUrl ?? ""}
+                                  alt={attachment.name}
+                                  onError={(event) => {
+                                    const target = event.currentTarget;
+                                    if (target.dataset.fallbackApplied === "true") {
+                                      return;
+                                    }
+                                    target.dataset.fallbackApplied = "true";
+                                    target.src = attachment.uri;
+                                  }}
+                                />
+                              </article>
+                            ))}
+                          </div>
+                        ) : null}
+                        {userFileAttachments.length > 0 ? (
+                          <div className="chat-item-inline-file-blocks" aria-label="Message file attachments">
+                            {userFileAttachments.map((attachment) => (
+                              <article key={attachment.key} className="chat-item-inline-file-block">
+                                <Paperclip size={14} aria-hidden="true" />
+                                <code title={attachment.displayPath}>{attachment.displayPath}</code>
+                              </article>
+                            ))}
+                          </div>
+                        ) : null}
+                        {parsedUserMessage && parsedUserMessage.bodyText.length > 0 ? (
+                          <p className="chat-item-body">
+                            {renderTextWithAutoLinks(parsedUserMessage.bodyText)}
+                          </p>
+                        ) : null}
+                        {!parsedUserMessage ||
+                        (parsedUserMessage.attachments.length === 0 &&
+                          parsedUserMessage.bodyText.length === 0) ? (
+                          <p className="chat-item-body">...</p>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <>
                       <img className="chat-agent-avatar" src="/minico500x500.png" alt="minico" />
                       <div className="chat-item-body chat-item-markdown">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.text || "..."}</ReactMarkdown>
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          components={markdownComponents}
+                        >
+                          {item.text || "..."}
+                        </ReactMarkdown>
                       </div>
                     </>
                   )}
-                  {!item.completed ? (
-                    <footer className="chat-item-meta">
-                      {item.role === "agent" ? (
-                        <span className="typing-dots typing-dots-inline" aria-hidden="true">
-                          <span />
-                          <span />
-                          <span />
-                        </span>
-                      ) : null}
-                      <span className="chat-item-state">minico is thinking...</span>
-                    </footer>
-                  ) : null}
+                    {!item.completed ? (
+                      <footer className="chat-item-meta">
+                        {item.role === "agent" ? (
+                          <span className="typing-dots typing-dots-inline" aria-hidden="true">
+                            <span />
+                            <span />
+                            <span />
+                          </span>
+                        ) : null}
+                        <span className="chat-item-state">minico is thinking...</span>
+                      </footer>
+                    ) : null}
+                  </article>
+                );
+              })}
+              {showAgentTypingIndicator ? (
+                <article
+                  className="chat-item chat-item-agent chat-item-typing"
+                  aria-label="minico thinking indicator"
+                >
+                  <img className="chat-agent-avatar" src="/minico500x500.png" alt="minico" />
+                  <div className="typing-dots" aria-hidden="true">
+                    <span />
+                    <span />
+                    <span />
+                  </div>
+                  <p className="typing-label">minico is thinking...</p>
                 </article>
-              );
-            })}
-            {showAgentTypingIndicator ? (
-              <article
-                className="chat-item chat-item-agent chat-item-typing"
-                aria-label="minico thinking indicator"
-              >
-                <img className="chat-agent-avatar" src="/minico500x500.png" alt="minico" />
-                <div className="typing-dots" aria-hidden="true">
-                  <span />
-                  <span />
-                  <span />
+              ) : null}
+              {showEmptyPlaceholder ? (
+                <div className="chat-empty-placeholder">
+                  <img
+                    className="chat-empty-image"
+                    src="/minico500x500.png"
+                    alt="minico"
+                  />
+                  <p className="chat-empty-bubble">Ask me anything</p>
                 </div>
-                <p className="typing-label">minico is thinking...</p>
-              </article>
-            ) : null}
-            {showEmptyPlaceholder ? (
-              <div className="chat-empty-placeholder">
-                <img
-                  className="chat-empty-image"
-                  src="/minico500x500.png"
-                  alt="minico"
-                />
-                <p className="chat-empty-bubble">Ask me anything</p>
-              </div>
+              ) : null}
+            </div>
+            {showScrollToBottomButton ? (
+              <button
+                type="button"
+                className="icon-button icon-button-muted chat-scroll-to-bottom"
+                onClick={() => scrollToLatestMessage("smooth")}
+                aria-label="Scroll to latest messages"
+                title="Scroll to latest messages"
+              >
+                <ArrowDown size={16} aria-hidden="true" />
+              </button>
             ) : null}
           </div>
 
