@@ -29,6 +29,9 @@
   --error-banner-fg: #511717;
   --error-banner-border: #873737;
   --error-banner-button-fg: #7e2f2f;
+  --scrollbar-track: #efe4d6;
+  --scrollbar-thumb: #c2aa92;
+  --scrollbar-thumb-hover: #aa8e73;
 
   --space-1: 4px;
   --space-2: 8px;
@@ -69,6 +72,9 @@
   --error-banner-fg: #ffd8d8;
   --error-banner-border: #a95f68;
   --error-banner-button-fg: #ffd5d5;
+  --scrollbar-track: #223041;
+  --scrollbar-thumb: #4f6783;
+  --scrollbar-thumb-hover: #6483a7;
 }
 
 @keyframes warm-fade-in {
