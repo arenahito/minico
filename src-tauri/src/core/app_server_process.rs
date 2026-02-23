@@ -3,6 +3,8 @@
 use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::io::{BufRead, BufReader};
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -13,6 +15,9 @@ use thiserror::Error;
 
 use super::events::{RpcEvent, RpcResponsePayload};
 use super::rpc_client::{RpcClient, RpcClientError};
+
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppServerCommand {
@@ -75,6 +80,10 @@ impl AppServerProcess {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        #[cfg(windows)]
+        {
+            process.creation_flags(CREATE_NO_WINDOW);
+        }
 
         for (key, value) in env_vars {
             process.env(key, value);
