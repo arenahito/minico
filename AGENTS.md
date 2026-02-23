@@ -84,3 +84,11 @@ This file defines repository-specific guardrails for all agents working on `mini
   - approval retryability/fallback
   - model/effort restore and persistence race conditions
   - CODEX_HOME save/reset edge cases
+
+## Commit Message Rules
+
+- Write commit messages using Conventional Commits.
+- Preferred format: `type(scope): summary`
+- Examples:
+  - `fix(auth): prevent stale initialized state after recovery failure`
+  - `feat(ci): add release-please workflow`

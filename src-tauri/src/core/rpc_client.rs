@@ -219,6 +219,7 @@ impl RpcClient {
         }
 
         if let Some(id) = incoming.get("id").and_then(Value::as_u64) {
+            let waiter = pending.lock().expect("pending map lock").remove(&id);
             let payload = if let Some(result) = incoming.get("result") {
                 RpcResponsePayload::Result(result.clone())
             } else if let Some(error) = incoming.get("error") {
@@ -243,7 +244,7 @@ impl RpcClient {
                 ));
             };
 
-            if let Some(waiter) = pending.lock().expect("pending map lock").remove(&id) {
+            if let Some(waiter) = waiter {
                 let _ = waiter.send(payload);
             }
             return Ok(());
@@ -395,6 +396,27 @@ mod tests {
                 data: Some(json!({"retry": true})),
             })
         );
+    }
+
+    #[test]
+    fn malformed_response_with_id_clears_pending_waiter() {
+        let pending = Arc::new(Mutex::new(HashMap::new()));
+        let (event_tx, _event_rx) = mpsc::channel();
+        let (waiter_tx, waiter_rx) = mpsc::channel();
+        pending.lock().expect("pending lock").insert(11, waiter_tx);
+
+        let message = json!({"id":11});
+        let error = RpcClient::dispatch_incoming(message, &pending, &event_tx)
+            .expect_err("must fail for malformed response");
+        assert!(matches!(
+            error,
+            super::RpcClientError::InvalidMessage(_)
+        ));
+        assert!(!pending.lock().expect("pending lock").contains_key(&11));
+        assert!(matches!(
+            waiter_rx.recv_timeout(Duration::from_millis(50)),
+            Err(mpsc::RecvTimeoutError::Disconnected)
+        ));
     }
 
     #[test]

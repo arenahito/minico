@@ -309,14 +309,13 @@ impl<R: RpcRuntime> CodexFacade<R> {
             return Ok(());
         }
 
-        let previous_state = self.state;
         self.state = LifecycleState::Recovering;
         if let Err(error) = self.runtime.restart().map_err(CodexFacadeError::Runtime) {
-            self.state = previous_state;
+            self.state = LifecycleState::Starting;
             return Err(error);
         }
         if let Err(error) = self.perform_handshake() {
-            self.state = previous_state;
+            self.state = LifecycleState::Starting;
             return Err(error);
         }
         self.state = LifecycleState::Initialized;
@@ -555,5 +554,33 @@ mod tests {
             facade.runtime.notify_log,
             vec!["initialized", "initialized"]
         );
+    }
+
+    #[test]
+    fn failed_recovery_handshake_marks_facade_uninitialized() {
+        let mut runtime = MockRuntime::with_running(true);
+        runtime
+            .responses
+            .push_back(RpcResponsePayload::Result(json!({}))); // initial initialize
+        runtime
+            .responses
+            .push_back(RpcResponsePayload::Error(JsonRpcErrorPayload {
+                code: -32000,
+                message: "initialize failed".to_string(),
+                data: None,
+            })); // reinitialize during recovery
+
+        let mut facade = CodexFacade::new(runtime, "0.1.0");
+        facade.initialize().expect("initialize");
+        facade.runtime.running = false;
+
+        let error = facade.account_read(false).expect_err("recovery must fail");
+        assert!(matches!(error, CodexFacadeError::RpcError { .. }));
+        assert_eq!(facade.state, LifecycleState::Starting);
+
+        let second_error = facade
+            .account_read(false)
+            .expect_err("must remain uninitialized after failed recovery");
+        assert!(matches!(second_error, CodexFacadeError::NotInitialized));
     }
 }

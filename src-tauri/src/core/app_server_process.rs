@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use std::collections::HashMap;
+use std::io::ErrorKind;
 use std::io::{BufRead, BufReader};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
@@ -154,7 +155,13 @@ impl AppServerProcess {
     }
 
     pub fn terminate(&mut self) -> Result<(), AppServerProcessError> {
-        self.child.kill().map_err(AppServerProcessError::Terminate)
+        if let Err(error) = self.child.kill() {
+            if error.kind() != ErrorKind::InvalidInput {
+                return Err(AppServerProcessError::Terminate(error));
+            }
+        }
+        self.child.wait().map_err(AppServerProcessError::Terminate)?;
+        Ok(())
     }
 
     pub fn is_running(&mut self) -> Result<bool, AppServerProcessError> {
