@@ -1,6 +1,6 @@
 [package]
 name = "minico"
-version = "0.2.1"
+version = "0.3.0"
 description = "minico desktop app"
 authors = ["minico"]
 edition = "2021"
