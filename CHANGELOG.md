@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.0](https://github.com/arenahito/minico/compare/v0.2.1...v0.3.0) (2026-03-07)
+
+
+### Features
+
+* **chat:** add fast mode toggle persistence ([47fa781](https://github.com/arenahito/minico/commit/47fa7813f8109323830018442dd81156f9ce3351))
+* **threads:** move new thread action to panel header ([ad7047e](https://github.com/arenahito/minico/commit/ad7047e177dc779d2cc4073e73c2c85f265cac67))
+
+
+### Bug Fixes
+
+* **chat:** auto-resize composer from two to eight rows ([67378b1](https://github.com/arenahito/minico/commit/67378b1e2d1caecadc1e73663d7261ae5012d5eb))
+* **chat:** style inline code with blue text ([0deaff9](https://github.com/arenahito/minico/commit/0deaff9cb7b8e22ae3ebd8211dc7e242c1c3553e))
+
 ## [0.2.1](https://github.com/arenahito/minico/compare/v0.2.0...v0.2.1) (2026-02-23)
 
 
