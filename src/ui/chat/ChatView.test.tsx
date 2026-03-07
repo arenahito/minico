@@ -316,6 +316,39 @@ describe("ChatView", () => {
     expect(codeElement?.textContent).toContain("const value = 42;");
   });
 
+  it("styles inline code separately from fenced code blocks", () => {
+    const { container } = render(
+      <ChatView
+        turnState={turnState(null)}
+        items={[
+          item({
+            id: "item-agent-inline-code",
+            role: "agent",
+            itemType: "agentMessage",
+            text: "Run `pnpm verify` first.\n\n```ts\nconst value = 42;\n```",
+          }),
+        ]}
+        threadLoading={false}
+        threadCwd="C:/workspace/demo"
+        composerValue=""
+        selectorLabel="Select model"
+        selectorDisplay="gpt-5 / medium"
+        selectorOptions={[{ value: "gpt-5", label: "gpt-5" }]}
+        selectorValue="gpt-5"
+        busy={false}
+        onComposerChange={vi.fn()}
+        onSelectorChange={vi.fn(() => true)}
+        onCreateThread={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+        onInterrupt={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("pnpm verify", { selector: "code.chat-inline-code" })).toBeVisible();
+    expect(container.querySelector("pre code.chat-inline-code")).toBeNull();
+    expect(container.querySelector("pre code.hljs.language-ts")).not.toBeNull();
+  });
+
   it("does not load mermaid runtime when message has no mermaid block", () => {
     render(
       <ChatView

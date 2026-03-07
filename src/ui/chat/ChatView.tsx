@@ -628,8 +628,9 @@ const markdownComponents: Components = {
     const hasLanguageClass = typeof className === "string" && /\blanguage-/.test(className);
     const isInline = plainTextOnly && !hasLanguageClass && !textContent.includes("\n");
     if (isInline) {
+      const inlineCodeClassName = className ? `chat-inline-code ${className}` : "chat-inline-code";
       return (
-        <code className={className} {...props}>
+        <code className={inlineCodeClassName} {...props}>
           {children}
         </code>
       );
