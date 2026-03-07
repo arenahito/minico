@@ -23,6 +23,8 @@ export type ReasoningEffort =
   | "high"
   | "xhigh";
 
+export type ServiceTier = "fast" | "flex";
+
 export interface ModelSummary {
   id: string;
   model: string;
@@ -145,6 +147,7 @@ export async function startTurn(
   text: string,
   model: string | null,
   effort: ReasoningEffort | null,
+  serviceTier: ServiceTier | null,
   personality: CodexPersonality,
   currentCwd: string | null,
   overrideCwd: string | null,
@@ -154,6 +157,7 @@ export async function startTurn(
     text,
     model,
     effort,
+    serviceTier,
     personality,
     currentCwd,
     overrideCwd,

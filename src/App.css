@@ -1195,6 +1195,26 @@ pre {
   position: relative;
 }
 
+.service-tier-toggle {
+  height: 40px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--surface-base);
+  color: var(--fg-muted);
+  padding: 0 var(--space-3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.service-tier-toggle.is-active {
+  border-color: color-mix(in srgb, var(--bg-accent) 45%, var(--border-default));
+  background: color-mix(in srgb, var(--bg-accent) 18%, var(--surface-base));
+  color: var(--fg-default);
+}
+
 .model-select-trigger {
   height: 40px;
   border: 1px solid var(--border-default);
@@ -1633,6 +1653,7 @@ pre {
 .thread-panel button,
 .icon-button,
 .model-select-trigger,
+.service-tier-toggle,
 .workspace-picker button,
 .settings-actions button,
 .settings-modal-close,
@@ -1650,6 +1671,7 @@ pre {
 .thread-panel button:hover:not(:disabled),
 .icon-button:hover:not(:disabled),
 .model-select-trigger:hover:not(:disabled),
+.service-tier-toggle:hover:not(:disabled),
 .workspace-picker button:hover:not(:disabled),
 .settings-actions button:hover:not(:disabled),
 .settings-modal-close:hover:not(:disabled),

@@ -331,10 +331,12 @@ describe("windowStateClient", () => {
     invokeMock.mockResolvedValueOnce({
       model: "gpt-5.2-codex",
       effort: "high",
+      serviceTier: "fast",
     });
     await expect(loadModelPreferenceRecord()).resolves.toEqual({
       model: "gpt-5.2-codex",
       effort: "high",
+      serviceTier: "fast",
     });
     expect(invokeMock).toHaveBeenCalledWith("window_read_model_preference");
   });
@@ -348,14 +350,29 @@ describe("windowStateClient", () => {
     expect(invokeMock).toHaveBeenCalledWith("window_read_model_preference");
   });
 
+  it("normalizes unknown persisted service tier as null", async () => {
+    invokeMock.mockResolvedValueOnce({
+      model: "gpt-5.2-codex",
+      effort: "high",
+      serviceTier: "turbo",
+    });
+    await expect(loadModelPreferenceRecord()).resolves.toEqual({
+      model: "gpt-5.2-codex",
+      effort: "high",
+      serviceTier: null,
+    });
+    expect(invokeMock).toHaveBeenCalledWith("window_read_model_preference");
+  });
+
   it("persists model preference through dedicated command", async () => {
     invokeMock.mockResolvedValueOnce(undefined);
     await expect(
-      persistModelPreferenceRecord("gpt-5.2-codex", "high"),
+      persistModelPreferenceRecord("gpt-5.2-codex", "high", "fast"),
     ).resolves.toBeUndefined();
     expect(invokeMock).toHaveBeenCalledWith("window_persist_model_preference", {
       model: "gpt-5.2-codex",
       effort: "high",
+      serviceTier: "fast",
     });
   });
 });

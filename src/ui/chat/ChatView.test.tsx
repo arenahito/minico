@@ -1240,6 +1240,39 @@ describe("ChatView", () => {
     });
   });
 
+  it("toggles fast mode from the composer toolbar", () => {
+    const onToggleFast = vi.fn();
+
+    render(
+      <ChatView
+        turnState={turnState(null)}
+        items={[]}
+        threadLoading={false}
+        threadCwd="C:/workspace/demo"
+        composerValue=""
+        selectorLabel="Select model"
+        selectorDisplay="gpt-5 / medium"
+        selectorOptions={[{ value: "gpt-5", label: "gpt-5" }]}
+        selectorValue="gpt-5"
+        fastEnabled
+        busy={false}
+        onComposerChange={vi.fn()}
+        onSelectorChange={vi.fn(() => true)}
+        onToggleFast={onToggleFast}
+        onCreateThread={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+        onInterrupt={vi.fn()}
+      />,
+    );
+
+    const fastToggle = screen.getByRole("button", { name: "Toggle fast mode" });
+    expect(fastToggle).toHaveAttribute("aria-pressed", "true");
+    expect(fastToggle).toHaveAttribute("title", "Fast mode (2x cost)");
+
+    fireEvent.click(fastToggle);
+    expect(onToggleFast).toHaveBeenCalledTimes(1);
+  });
+
   it("submits dropped file attachment token with prompt", async () => {
     const onSubmitPrompt = vi.fn();
     render(

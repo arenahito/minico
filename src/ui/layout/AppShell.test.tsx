@@ -681,6 +681,7 @@ describe("AppShell", () => {
         text: "hello",
         model: "gpt-5",
         effort: "medium",
+        serviceTier: null,
         personality: "friendly",
         currentCwd: "C:/workspace/new",
         overrideCwd: null,
@@ -1298,6 +1299,282 @@ describe("AppShell", () => {
         text: "hello",
         model: "gpt-5-mini",
         effort: "high",
+        serviceTier: null,
+        personality: "friendly",
+        currentCwd: "C:/workspace/demo",
+        overrideCwd: null,
+      });
+    });
+  });
+
+  it("submits turn with fast service tier when the fast toggle is enabled", async () => {
+    const user = userEvent.setup();
+    mockedInvoke.mockImplementation(async (command) => {
+      if (command === "auth_read_status") {
+        return {
+          state: "loggedIn",
+          accountEmail: "demo@example.com",
+          requiresOpenaiAuth: false,
+          rawAuthMode: "chatgpt",
+          message: null,
+        };
+      }
+      if (command === "thread_list") {
+        return { threads: [] };
+      }
+      if (command === "model_list") {
+        return {
+          models: [
+            {
+              id: "m1",
+              model: "gpt-5",
+              displayName: "GPT-5",
+              isDefault: true,
+              defaultReasoningEffort: "medium",
+              supportedReasoningEfforts: ["low", "medium", "high"],
+            },
+          ],
+        };
+      }
+      if (command === "thread_start") {
+        return {
+          threadId: "thread-1",
+          cwd: "C:/workspace/demo",
+          workspaceFallbackUsed: false,
+          workspaceWarning: null,
+        };
+      }
+      if (command === "turn_start") {
+        return {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          cwd: "C:/workspace/demo",
+          workspaceFallbackUsed: false,
+          workspaceWarning: null,
+        };
+      }
+      if (command === "session_poll_events") {
+        return [];
+      }
+      return undefined;
+    });
+
+    render(<AppShell />);
+    await screen.findByRole("button", { name: "Toggle fast mode" });
+
+    const fastToggle = screen.getByRole("button", { name: "Toggle fast mode" });
+    expect(fastToggle).toHaveAttribute("aria-pressed", "false");
+
+    await user.click(fastToggle);
+    expect(screen.getByRole("dialog", { name: "Enable fast mode" })).toBeVisible();
+    expect(
+      screen.getByText(
+        "Enabling fast mode increases token usage in exchange for faster reasoning.",
+      ),
+    ).toBeVisible();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Enable fast mode" })).toHaveFocus();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Enable fast mode" }));
+    expect(screen.queryByRole("dialog", { name: "Enable fast mode" })).not.toBeInTheDocument();
+    expect(fastToggle).toHaveAttribute("aria-pressed", "true");
+
+    await user.type(screen.getByRole("textbox"), "hello");
+    await user.click(screen.getByRole("button", { name: "Send prompt" }));
+
+    await waitFor(() => {
+      expect(mockedInvoke).toHaveBeenCalledWith("turn_start", {
+        threadId: "thread-1",
+        text: "hello",
+        model: "gpt-5",
+        effort: "medium",
+        serviceTier: "fast",
+        personality: "friendly",
+        currentCwd: "C:/workspace/demo",
+        overrideCwd: null,
+      });
+    });
+  });
+
+  it("turns fast mode off immediately when it is already enabled", async () => {
+    const user = userEvent.setup();
+    mockedInvoke.mockImplementation(async (command) => {
+      if (command === "auth_read_status") {
+        return {
+          state: "loggedIn",
+          accountEmail: "demo@example.com",
+          requiresOpenaiAuth: false,
+          rawAuthMode: "chatgpt",
+          message: null,
+        };
+      }
+      if (command === "thread_list") {
+        return { threads: [] };
+      }
+      if (command === "model_list") {
+        return {
+          models: [
+            {
+              id: "m1",
+              model: "gpt-5",
+              displayName: "gpt-5",
+              isDefault: true,
+              defaultReasoningEffort: "medium",
+              supportedReasoningEfforts: ["minimal", "low", "medium", "high"],
+            },
+          ],
+        };
+      }
+      if (command === "workspace_resolve_active_cwd") {
+        return {
+          cwd: "C:/workspace/demo",
+          fallbackUsed: false,
+          warning: null,
+        };
+      }
+      if (command === "thread_start") {
+        return {
+          threadId: "thread-1",
+          cwd: "C:/workspace/demo",
+          workspaceFallbackUsed: false,
+          workspaceWarning: null,
+        };
+      }
+      if (command === "turn_start") {
+        return {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          cwd: "C:/workspace/demo",
+          workspaceFallbackUsed: false,
+          workspaceWarning: null,
+        };
+      }
+      if (command === "session_poll_events") {
+        return [];
+      }
+      return undefined;
+    });
+
+    render(<AppShell />);
+    await screen.findByRole("button", { name: "Toggle fast mode" });
+
+    const fastToggle = screen.getByRole("button", { name: "Toggle fast mode" });
+    await user.click(fastToggle);
+    await user.click(screen.getByRole("button", { name: "Enable fast mode" }));
+    expect(fastToggle).toHaveAttribute("aria-pressed", "true");
+
+    await user.click(fastToggle);
+    expect(screen.queryByRole("dialog", { name: "Enable fast mode" })).not.toBeInTheDocument();
+    expect(fastToggle).toHaveAttribute("aria-pressed", "false");
+
+    await user.type(screen.getByRole("textbox"), "hello");
+    await user.click(screen.getByRole("button", { name: "Send prompt" }));
+
+    await waitFor(() => {
+      expect(mockedInvoke).toHaveBeenCalledWith("turn_start", {
+        threadId: "thread-1",
+        text: "hello",
+        model: "gpt-5",
+        effort: "medium",
+        serviceTier: null,
+        personality: "friendly",
+        currentCwd: "C:/workspace/demo",
+        overrideCwd: null,
+      });
+    });
+  });
+
+  it("keeps fast mode disabled when the confirmation dialog is cancelled", async () => {
+    const user = userEvent.setup();
+    mockedInvoke.mockImplementation(async (command) => {
+      if (command === "auth_read_status") {
+        return {
+          state: "loggedIn",
+          accountEmail: "demo@example.com",
+          requiresOpenaiAuth: false,
+          rawAuthMode: "chatgpt",
+          message: null,
+        };
+      }
+      if (command === "thread_list") {
+        return { threads: [] };
+      }
+      if (command === "model_list") {
+        return {
+          models: [
+            {
+              id: "m1",
+              model: "gpt-5",
+              displayName: "gpt-5",
+              isDefault: true,
+              defaultReasoningEffort: "medium",
+              supportedReasoningEfforts: ["minimal", "low", "medium", "high"],
+            },
+          ],
+        };
+      }
+      if (command === "workspace_resolve_active_cwd") {
+        return {
+          cwd: "C:/workspace/demo",
+          fallbackUsed: false,
+          warning: null,
+        };
+      }
+      if (command === "thread_start") {
+        return {
+          threadId: "thread-1",
+          cwd: "C:/workspace/demo",
+          workspaceFallbackUsed: false,
+          workspaceWarning: null,
+        };
+      }
+      if (command === "turn_start") {
+        return {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          cwd: "C:/workspace/demo",
+          workspaceFallbackUsed: false,
+          workspaceWarning: null,
+        };
+      }
+      if (command === "session_poll_events") {
+        return [];
+      }
+      return undefined;
+    });
+
+    render(<AppShell />);
+    await screen.findByRole("button", { name: "Toggle fast mode" });
+
+    const fastToggle = screen.getByRole("button", { name: "Toggle fast mode" });
+    await user.click(fastToggle);
+    expect(screen.getByRole("dialog", { name: "Enable fast mode" })).toBeVisible();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Enable fast mode" })).toHaveFocus();
+    });
+
+    await user.tab();
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
+
+    await user.tab();
+    expect(screen.getByRole("button", { name: "Enable fast mode" })).toHaveFocus();
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Enable fast mode" })).not.toBeInTheDocument();
+    expect(fastToggle).toHaveAttribute("aria-pressed", "false");
+    expect(fastToggle).toHaveFocus();
+
+    await user.type(screen.getByRole("textbox"), "hello");
+    await user.click(screen.getByRole("button", { name: "Send prompt" }));
+
+    await waitFor(() => {
+      expect(mockedInvoke).toHaveBeenCalledWith("turn_start", {
+        threadId: "thread-1",
+        text: "hello",
+        model: "gpt-5",
+        effort: "medium",
+        serviceTier: null,
         personality: "friendly",
         currentCwd: "C:/workspace/demo",
         overrideCwd: null,
@@ -1460,6 +1737,7 @@ describe("AppShell", () => {
         text: "hello",
         model: "gpt-5",
         effort: "medium",
+        serviceTier: null,
         personality: "friendly",
         currentCwd: "C:/workspace/demo",
         overrideCwd: "D:/work/override",
@@ -1471,6 +1749,7 @@ describe("AppShell", () => {
     loadModelPreferenceRecord.mockResolvedValueOnce({
       model: "gpt-5.2-codex",
       effort: "high",
+      serviceTier: "fast",
     });
     mockedInvoke.mockImplementation(async (command) => {
       if (command === "auth_read_status") {
@@ -1525,12 +1804,17 @@ describe("AppShell", () => {
     await waitFor(() => {
       expect(screen.getByText("gpt-5.2-codex / high")).toBeVisible();
     });
+    expect(screen.getByRole("button", { name: "Toggle fast mode" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
   });
 
   it("does not persist null effort before startup model preference restore completes", async () => {
     const preferenceDeferred = deferred<{
       model: string;
       effort: string | null;
+      serviceTier: "fast" | "flex" | null;
     }>();
     loadModelPreferenceRecord.mockReturnValueOnce(preferenceDeferred.promise);
 
@@ -1584,12 +1868,17 @@ describe("AppShell", () => {
     preferenceDeferred.resolve({
       model: "gpt-5.2-codex",
       effort: "high",
+      serviceTier: "fast",
     });
 
     await waitFor(() => {
       expect(screen.getByText("gpt-5.2-codex / high")).toBeVisible();
     });
-    expect(persistModelPreferenceRecord).not.toHaveBeenCalledWith("gpt-5.2-codex", null);
+    expect(persistModelPreferenceRecord).not.toHaveBeenCalledWith(
+      "gpt-5.2-codex",
+      null,
+      null,
+    );
   });
 
   it("keeps selected effort when reopening effort list for the same model", async () => {

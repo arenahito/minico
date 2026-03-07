@@ -106,6 +106,8 @@ pub struct WindowConfig {
     pub selected_model: Option<String>,
     #[serde(rename = "selectedEffort")]
     pub selected_effort: Option<String>,
+    #[serde(rename = "selectedServiceTier")]
+    pub selected_service_tier: Option<String>,
     #[serde(flatten)]
     pub extra: HashMap<String, serde_json::Value>,
 }

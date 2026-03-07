@@ -31,6 +31,7 @@ import {
   listThreads,
   pollSessionEvents,
   resumeThread,
+  type ServiceTier,
   startThread,
   startTurn,
   type ModelSummary,
@@ -201,6 +202,13 @@ function normalizeReasoningEffort(value: string | null | undefined): ReasoningEf
   return null;
 }
 
+function normalizeServiceTier(value: string | null | undefined): ServiceTier | null {
+  if (value === "fast" || value === "flex") {
+    return value;
+  }
+  return null;
+}
+
 function normalizeCodexPersonality(value: string | null | undefined): CodexPersonality {
   if (value === "friendly" || value === "pragmatic" || value === "none") {
     return value;
@@ -305,8 +313,12 @@ function clampThreadPanelWidth(width: number, containerWidth: number | null): nu
   return Math.round(Math.min(max, Math.max(THREAD_PANEL_MIN_WIDTH, width)));
 }
 
-function modelPreferenceKey(model: string, effort: ReasoningEffort | null): string {
-  return `${model}|${effort ?? "__default__"}`;
+function modelPreferenceKey(
+  model: string,
+  effort: ReasoningEffort | null,
+  serviceTier: ServiceTier | null,
+): string {
+  return `${model}|${effort ?? "__default__"}|${serviceTier ?? "__default_tier__"}`;
 }
 
 function normalizePathForComparison(path: string): string {
@@ -370,6 +382,8 @@ export function AppShell() {
   const [modelCatalog, setModelCatalog] = useState<ModelSummary[]>(FALLBACK_MODELS);
   const [selectedModel, setSelectedModel] = useState(FALLBACK_MODELS[0].model);
   const [selectedEffort, setSelectedEffort] = useState<ReasoningEffort | null>(null);
+  const [selectedServiceTier, setSelectedServiceTier] = useState<ServiceTier | null>(null);
+  const [showFastModeConfirm, setShowFastModeConfirm] = useState(false);
   const [selectedPersonality, setSelectedPersonality] = useState<CodexPersonality>(
     DEFAULT_CODEX_PERSONALITY,
   );
@@ -420,6 +434,9 @@ export function AppShell() {
   const codexHomeLatestWhileSettingsOpenRef = useRef<string | null>(null);
   const loginCodexHomeConfiguredRef = useRef<string>(DEFAULT_CODEX_HOME_ALIAS);
   const closeSettingsModalRef = useRef<(immediate?: boolean) => void>(() => {});
+  const fastModeConfirmAcceptRef = useRef<HTMLButtonElement | null>(null);
+  const fastModeConfirmCancelRef = useRef<HTMLButtonElement | null>(null);
+  const fastModeConfirmRestoreFocusRef = useRef<HTMLElement | null>(null);
 
   const activeApproval = useMemo(
     () => currentApproval(approvalState),
@@ -718,6 +735,7 @@ export function AppShell() {
       setModelCatalog(FALLBACK_MODELS);
       setSelectedModel(FALLBACK_MODELS[0].model);
       setSelectedEffort(resolveEffortForModel(FALLBACK_MODELS[0]));
+      setSelectedServiceTier(null);
       setSelectorStage("model");
       persistedModelPreferenceRef.current = null;
       return;
@@ -766,10 +784,17 @@ export function AppShell() {
                 : resolveEffortForModel(nextSummary)
             : resolveEffortForModel(nextSummary);
 
-        persistedModelPreferenceRef.current = modelPreferenceKey(nextModel, nextEffort);
+        const nextServiceTier = normalizeServiceTier(persistedPreference?.serviceTier);
+
+        persistedModelPreferenceRef.current = modelPreferenceKey(
+          nextModel,
+          nextEffort,
+          nextServiceTier,
+        );
         modelPreferenceReadyRef.current = true;
         setSelectedModel(nextModel);
         setSelectedEffort(nextEffort);
+        setSelectedServiceTier(nextServiceTier);
         setSelectorStage("model");
       } catch {
         if (!cancelled) {
@@ -777,11 +802,13 @@ export function AppShell() {
           persistedModelPreferenceRef.current = modelPreferenceKey(
             FALLBACK_MODELS[0].model,
             fallbackEffort,
+            null,
           );
           modelPreferenceReadyRef.current = true;
           setModelCatalog(FALLBACK_MODELS);
           setSelectedModel(FALLBACK_MODELS[0].model);
           setSelectedEffort(fallbackEffort);
+          setSelectedServiceTier(null);
           setSelectorStage("model");
         }
       }
@@ -884,16 +911,76 @@ export function AppShell() {
       return;
     }
 
-    const nextKey = modelPreferenceKey(selectedModel, selectedEffort);
+    const nextKey = modelPreferenceKey(selectedModel, selectedEffort, selectedServiceTier);
     if (persistedModelPreferenceRef.current === nextKey) {
       return;
     }
     persistedModelPreferenceRef.current = nextKey;
-    void persistModelPreferenceRecord(selectedModel, selectedEffort).catch((reason) => {
-      persistedModelPreferenceRef.current = null;
-      setError(mapErrorToUserFacing(reason));
+    void persistModelPreferenceRecord(selectedModel, selectedEffort, selectedServiceTier).catch(
+      (reason) => {
+        persistedModelPreferenceRef.current = null;
+        setError(mapErrorToUserFacing(reason));
+      },
+    );
+  }, [auth.view, selectedEffort, selectedModel, selectedServiceTier]);
+
+  useEffect(() => {
+    if (!showFastModeConfirm) {
+      return;
+    }
+
+    fastModeConfirmRestoreFocusRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+    queueMicrotask(() => {
+      fastModeConfirmAcceptRef.current?.focus();
     });
-  }, [auth.view, selectedEffort, selectedModel]);
+
+    function handleFastModeConfirmKeydown(event: KeyboardEvent): void {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        handleCancelFastModeConfirm();
+        return;
+      }
+
+      if (event.key !== "Tab") {
+        return;
+      }
+
+      const focusTargets: HTMLElement[] = [
+        fastModeConfirmAcceptRef.current,
+        fastModeConfirmCancelRef.current,
+      ].filter((target): target is HTMLButtonElement => target !== null && !target.disabled);
+
+      if (focusTargets.length === 0) {
+        return;
+      }
+
+      const activeElement =
+        document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      const currentIndex = activeElement ? focusTargets.indexOf(activeElement) : -1;
+
+      if (event.shiftKey) {
+        if (currentIndex <= 0) {
+          event.preventDefault();
+          focusTargets[focusTargets.length - 1]?.focus();
+        }
+        return;
+      }
+
+      if (currentIndex === -1 || currentIndex === focusTargets.length - 1) {
+        event.preventDefault();
+        focusTargets[0]?.focus();
+      }
+    }
+
+    document.addEventListener("keydown", handleFastModeConfirmKeydown);
+    return () => {
+      document.removeEventListener("keydown", handleFastModeConfirmKeydown);
+      fastModeConfirmRestoreFocusRef.current?.focus();
+      fastModeConfirmRestoreFocusRef.current = null;
+    };
+  }, [showFastModeConfirm]);
 
   useEffect(() => {
     if (auth.view !== "loginInProgress" && auth.view !== "loggedIn") {
@@ -1201,6 +1288,7 @@ export function AppShell() {
         trimmed,
         selectedModel,
         selectedEffort,
+        selectedServiceTier,
         selectedPersonality,
         targetThreadCwd,
         turnCwdOverride,
@@ -1324,6 +1412,24 @@ export function AppShell() {
       }
       setApprovalBusy(false);
     }
+  }
+
+  function handleFastToggle(): void {
+    if (normalizeServiceTier(selectedServiceTier) === "fast") {
+      setSelectedServiceTier(null);
+      return;
+    }
+
+    setShowFastModeConfirm(true);
+  }
+
+  function handleConfirmFastMode(): void {
+    setSelectedServiceTier("fast");
+    setShowFastModeConfirm(false);
+  }
+
+  function handleCancelFastModeConfirm(): void {
+    setShowFastModeConfirm(false);
   }
 
   function updateCodexHomeChangedState(): void {
@@ -1791,9 +1897,11 @@ export function AppShell() {
               selectorDisplay={selectorDisplay}
               selectorOptions={selectorOptions}
               selectorValue={selectorValue}
+              fastEnabled={selectedServiceTier === "fast"}
               busy={busy}
               onComposerChange={setComposerValue}
               onSelectorChange={handleComposerSelectorChange}
+              onToggleFast={handleFastToggle}
               onCreateThread={() => void handleCreateThread()}
               onSelectThreadPath={(nextPath) => setSelectedThreadCwdOverride(nextPath)}
               onSubmitPrompt={(nextPrompt) => void handleSubmitPrompt(nextPrompt)}
@@ -1868,6 +1976,40 @@ export function AppShell() {
         busy={approvalBusy}
         onDecision={(decision) => void handleApprovalDecision(decision)}
       />
+
+      {showFastModeConfirm ? (
+        <div className="approval-overlay" role="presentation">
+          <section
+            className="approval-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Enable fast mode"
+          >
+            <header>
+              <h2>Enable fast mode?</h2>
+            </header>
+            <div className="approval-content">
+              <p>Enabling fast mode increases token usage in exchange for faster reasoning.</p>
+            </div>
+            <footer className="approval-actions">
+              <button
+                ref={fastModeConfirmAcceptRef}
+                type="button"
+                onClick={handleConfirmFastMode}
+              >
+                Enable fast mode
+              </button>
+              <button
+                ref={fastModeConfirmCancelRef}
+                type="button"
+                onClick={handleCancelFastModeConfirm}
+              >
+                Cancel
+              </button>
+            </footer>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }

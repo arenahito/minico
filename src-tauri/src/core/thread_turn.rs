@@ -446,6 +446,7 @@ pub async fn turn_start(
     text: String,
     model: Option<String>,
     effort: Option<String>,
+    service_tier: Option<String>,
     personality: Option<String>,
     current_cwd: Option<String>,
     override_cwd: Option<String>,
@@ -462,6 +463,7 @@ pub async fn turn_start(
                 &trimmed,
                 model.as_deref(),
                 effort.as_deref(),
+                service_tier.as_deref(),
                 personality.as_deref(),
                 override_cwd.as_deref(),
             )

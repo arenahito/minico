@@ -20,6 +20,7 @@ const MAX_THREAD_PANEL_WIDTH: u32 = 560;
 pub struct ModelPreferenceRecord {
     pub model: Option<String>,
     pub effort: Option<String>,
+    pub service_tier: Option<String>,
 }
 
 #[tauri::command]
@@ -89,10 +90,11 @@ pub async fn window_read_model_preference() -> Result<ModelPreferenceRecord, Str
 pub async fn window_persist_model_preference(
     model: Option<String>,
     effort: Option<String>,
+    service_tier: Option<String>,
 ) -> Result<(), String> {
     run_blocking_task(move || {
         let config_path = paths::config_file_path().map_err(|error| error.to_string())?;
-        persist_model_preference_to_path(&config_path, model, effort)
+        persist_model_preference_to_path(&config_path, model, effort, service_tier)
             .map_err(|error| error.to_string())
     })
     .await
@@ -200,6 +202,14 @@ pub fn read_model_preference_from_path(
                 Some(trimmed.to_string())
             }
         }),
+        service_tier: config.window.selected_service_tier.and_then(|value| {
+            let trimmed = value.trim();
+            if matches!(trimmed, "fast" | "flex") {
+                Some(trimmed.to_string())
+            } else {
+                None
+            }
+        }),
     })
 }
 
@@ -207,6 +217,7 @@ pub fn persist_model_preference_to_path(
     config_path: &Path,
     model: Option<String>,
     effort: Option<String>,
+    service_tier: Option<String>,
 ) -> Result<(), ConfigError> {
     let mut config = load_or_default(config_path)?;
     config.window.selected_model = model.and_then(|value| {
@@ -223,6 +234,14 @@ pub fn persist_model_preference_to_path(
             None
         } else {
             Some(trimmed.to_string())
+        }
+    });
+    config.window.selected_service_tier = service_tier.and_then(|value| {
+        let trimmed = value.trim();
+        if matches!(trimmed, "fast" | "flex") {
+            Some(trimmed.to_string())
+        } else {
+            None
         }
     });
     save_system_update(config_path, &config)
@@ -370,10 +389,27 @@ mod tests {
             &config_path,
             Some("gpt-5.2-codex".to_string()),
             Some("high".to_string()),
+            Some("fast".to_string()),
         )
         .expect("persist");
         let read_back = read_model_preference_from_path(&config_path).expect("read");
         assert_eq!(read_back.model.as_deref(), Some("gpt-5.2-codex"));
         assert_eq!(read_back.effort.as_deref(), Some("high"));
+        assert_eq!(read_back.service_tier.as_deref(), Some("fast"));
+    }
+
+    #[test]
+    fn reads_legacy_model_preference_without_service_tier() {
+        let temp = TempDir::new().expect("temp dir");
+        let config_path = temp.path().join("config.json");
+        let mut config = MinicoConfig::default();
+        config.window.selected_model = Some("gpt-5".to_string());
+        config.window.selected_effort = Some("medium".to_string());
+        save_system_update(&config_path, &config).expect("seed config");
+
+        let read_back = read_model_preference_from_path(&config_path).expect("read");
+        assert_eq!(read_back.model.as_deref(), Some("gpt-5"));
+        assert_eq!(read_back.effort.as_deref(), Some("medium"));
+        assert_eq!(read_back.service_tier, None);
     }
 }

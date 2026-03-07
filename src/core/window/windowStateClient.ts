@@ -3,6 +3,7 @@ import { PhysicalPosition, PhysicalSize } from "@tauri-apps/api/dpi";
 import { availableMonitors, getCurrentWindow } from "@tauri-apps/api/window";
 
 import { loadSettings } from "../settings/store";
+import type { ServiceTier } from "../chat/threadService";
 import type { WindowPlacement } from "../settings/types";
 
 export interface MonitorWorkArea {
@@ -17,6 +18,7 @@ export interface MonitorWorkArea {
 export interface ModelPreferenceRecord {
   model: string | null;
   effort: string | null;
+  serviceTier: ServiceTier | null;
 }
 
 let disposeLifecycleListeners: (() => void) | null = null;
@@ -125,19 +127,23 @@ export async function loadModelPreferenceRecord(): Promise<ModelPreferenceRecord
     typeof value.effort === "string" && value.effort.trim().length > 0
       ? value.effort.trim()
       : null;
+  const serviceTier =
+    value.serviceTier === "fast" || value.serviceTier === "flex" ? value.serviceTier : null;
   if (!model) {
     return null;
   }
-  return { model, effort };
+  return { model, effort, serviceTier };
 }
 
 export async function persistModelPreferenceRecord(
   model: string | null,
   effort: string | null,
+  serviceTier: ServiceTier | null,
 ): Promise<void> {
   await invoke("window_persist_model_preference", {
     model: model?.trim() || null,
     effort: effort?.trim() || null,
+    serviceTier: serviceTier === "fast" || serviceTier === "flex" ? serviceTier : null,
   });
 }
 

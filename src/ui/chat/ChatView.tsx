@@ -38,9 +38,11 @@ interface ChatViewProps {
   selectorDisplay: string;
   selectorOptions: ComposerSelectOption[];
   selectorValue: string;
+  fastEnabled?: boolean;
   busy: boolean;
   onComposerChange: (nextValue: string) => void;
   onSelectorChange: (nextValue: string) => boolean;
+  onToggleFast?: () => void;
   onCreateThread: () => void;
   onSelectThreadPath?: (nextPath: string) => void;
   onSubmitPrompt: (composedPrompt: string) => void;
@@ -825,9 +827,11 @@ export function ChatView({
   selectorDisplay,
   selectorOptions,
   selectorValue,
+  fastEnabled = false,
   busy,
   onComposerChange,
   onSelectorChange,
+  onToggleFast,
   onCreateThread,
   onSelectThreadPath,
   onSubmitPrompt,
@@ -1456,6 +1460,16 @@ export function ChatView({
                     </ul>
                   ) : null}
                 </div>
+                <button
+                  type="button"
+                  className={`service-tier-toggle ${fastEnabled ? "is-active" : ""}`}
+                  aria-label="Toggle fast mode"
+                  aria-pressed={fastEnabled}
+                  title="Fast mode (2x cost)"
+                  onClick={() => onToggleFast?.()}
+                >
+                  Fast
+                </button>
               </div>
               <div className="composer-actions">
                 <button

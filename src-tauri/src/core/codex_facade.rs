@@ -192,12 +192,14 @@ impl<R: RpcRuntime> CodexFacade<R> {
         self.request_json("model/list", json!({}))
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn turn_start(
         &mut self,
         thread_id: &str,
         text: &str,
         model: Option<&str>,
         effort: Option<&str>,
+        service_tier: Option<&str>,
         personality: Option<&str>,
         cwd: Option<&str>,
     ) -> Result<Value, CodexFacadeError> {
@@ -208,6 +210,10 @@ impl<R: RpcRuntime> CodexFacade<R> {
         let effort = effort
             .map(str::trim)
             .filter(|value| !value.is_empty())
+            .map(ToString::to_string);
+        let service_tier = service_tier
+            .map(str::trim)
+            .filter(|value| matches!(*value, "fast" | "flex"))
             .map(ToString::to_string);
         let personality = personality
             .map(str::trim)
@@ -221,6 +227,7 @@ impl<R: RpcRuntime> CodexFacade<R> {
             "threadId": thread_id,
             "model": model,
             "effort": effort,
+            "serviceTier": service_tier,
             "personality": personality,
             "input": [
                 { "type": "text", "text": text }
@@ -370,6 +377,7 @@ mod tests {
     struct MockRuntime {
         running: bool,
         request_log: Vec<String>,
+        request_params_log: Vec<(String, serde_json::Value)>,
         notify_log: Vec<String>,
         responses: VecDeque<RpcResponsePayload>,
         events: VecDeque<RpcEvent>,
@@ -391,10 +399,11 @@ mod tests {
         fn request(
             &mut self,
             method: &str,
-            _params: serde_json::Value,
+            params: serde_json::Value,
             _timeout: std::time::Duration,
         ) -> Result<RpcResponsePayload, String> {
             self.request_log.push(method.to_string());
+            self.request_params_log.push((method.to_string(), params));
             Ok(self
                 .responses
                 .pop_front()
@@ -554,6 +563,70 @@ mod tests {
             facade.runtime.notify_log,
             vec!["initialized", "initialized"]
         );
+    }
+
+    #[test]
+    fn turn_start_includes_service_tier_when_valid() {
+        let mut runtime = MockRuntime::with_running(true);
+        runtime
+            .responses
+            .push_back(RpcResponsePayload::Result(json!({}))); // initialize
+        runtime.responses.push_back(RpcResponsePayload::Result(
+            json!({"turn": {"id": "turn-1"}}),
+        )); // turn_start
+
+        let mut facade = CodexFacade::new(runtime, "0.1.0");
+        facade.initialize().expect("initialize");
+        facade
+            .turn_start(
+                "thread-1",
+                "hello",
+                Some("gpt-5"),
+                Some("medium"),
+                Some("fast"),
+                Some("friendly"),
+                Some("C:/workspace"),
+            )
+            .expect("turn start");
+
+        let (_, params) = facade
+            .runtime
+            .request_params_log
+            .last()
+            .expect("request params");
+        assert_eq!(params["serviceTier"], json!("fast"));
+    }
+
+    #[test]
+    fn turn_start_ignores_invalid_service_tier_values() {
+        let mut runtime = MockRuntime::with_running(true);
+        runtime
+            .responses
+            .push_back(RpcResponsePayload::Result(json!({}))); // initialize
+        runtime.responses.push_back(RpcResponsePayload::Result(
+            json!({"turn": {"id": "turn-2"}}),
+        )); // turn_start
+
+        let mut facade = CodexFacade::new(runtime, "0.1.0");
+        facade.initialize().expect("initialize");
+        facade
+            .turn_start(
+                "thread-1",
+                "hello",
+                Some("gpt-5"),
+                Some("medium"),
+                Some(" turbo "),
+                Some("friendly"),
+                Some("C:/workspace"),
+            )
+            .expect("turn start");
+
+        let (_, params) = facade
+            .runtime
+            .request_params_log
+            .last()
+            .expect("request params");
+        assert!(params["serviceTier"].is_null());
     }
 
     #[test]
