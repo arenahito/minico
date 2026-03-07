@@ -16,7 +16,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { open } from "@tauri-apps/plugin-dialog";
 import type { TurnStreamItem, TurnStreamState } from "../../core/chat/turnReducer";
-import { ArrowDown, Check, ChevronDown, Copy, FolderOpen, ListPlus, Paperclip, Send, Square, X } from "lucide-react";
+import { ArrowDown, Check, ChevronDown, Copy, FolderOpen, Paperclip, Send, Square, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
@@ -43,7 +43,7 @@ interface ChatViewProps {
   onComposerChange: (nextValue: string) => void;
   onSelectorChange: (nextValue: string) => boolean;
   onToggleFast?: () => void;
-  onCreateThread: () => void;
+  onCreateThread?: () => void;
   onSelectThreadPath?: (nextPath: string) => void;
   onSubmitPrompt: (composedPrompt: string) => void;
   onInterrupt: () => void;
@@ -832,7 +832,6 @@ export function ChatView({
   onComposerChange,
   onSelectorChange,
   onToggleFast,
-  onCreateThread,
   onSelectThreadPath,
   onSubmitPrompt,
   onInterrupt,
@@ -1472,15 +1471,6 @@ export function ChatView({
                 </button>
               </div>
               <div className="composer-actions">
-                <button
-                  type="button"
-                  className="icon-button icon-button-muted"
-                  onClick={onCreateThread}
-                  aria-label="Create new thread"
-                  title="New thread"
-                >
-                  <ListPlus size={16} aria-hidden="true" />
-                </button>
                 <button
                   type="button"
                   className="icon-button icon-button-muted"

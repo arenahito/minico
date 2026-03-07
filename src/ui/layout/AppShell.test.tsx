@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
@@ -668,6 +668,16 @@ describe("AppShell", () => {
     await waitFor(() => {
       expect(screen.getByRole("heading", { level: 2, name: "Threads" })).toBeVisible();
     });
+    const threadHeader = screen
+      .getByRole("heading", { level: 2, name: "Threads" })
+      .closest(".thread-panel-header");
+    expect(threadHeader).not.toBeNull();
+    expect(
+      within(threadHeader as HTMLElement).getByRole("button", { name: "Create new thread" }),
+    ).toBeVisible();
+    expect(
+      within(threadHeader as HTMLElement).getByRole("button", { name: "Refresh threads" }),
+    ).toBeVisible();
 
     await user.click(screen.getByRole("button", { name: "Create new thread" }));
     expect(mockedInvoke).not.toHaveBeenCalledWith("thread_start");

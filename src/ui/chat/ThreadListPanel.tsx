@@ -1,5 +1,5 @@
 import type { ThreadSummary } from "../../core/chat/threadService";
-import { Archive, RefreshCw } from "lucide-react";
+import { Archive, ListPlus, RefreshCw } from "lucide-react";
 
 interface ThreadListPanelProps {
   threads: ThreadSummary[];
@@ -8,6 +8,7 @@ interface ThreadListPanelProps {
   hasMoreThreads: boolean;
   loadingMoreThreads: boolean;
   collapsed: boolean;
+  onCreateThread: () => void;
   onRefreshThreads: () => void;
   onLoadMoreThreads: () => void;
   onSelectThread: (threadId: string) => void;
@@ -21,6 +22,7 @@ export function ThreadListPanel({
   hasMoreThreads,
   loadingMoreThreads,
   collapsed,
+  onCreateThread,
   onRefreshThreads,
   onLoadMoreThreads,
   onSelectThread,
@@ -35,6 +37,16 @@ export function ThreadListPanel({
       <div className="thread-panel-header">
         <h2>Threads</h2>
         <div className="thread-panel-actions">
+          <button
+            type="button"
+            className="thread-panel-create-button"
+            onClick={onCreateThread}
+            disabled={busy}
+            aria-label="Create new thread"
+            title="New thread"
+          >
+            <ListPlus size={15} aria-hidden="true" />
+          </button>
           <button
             type="button"
             className="thread-panel-refresh-button"

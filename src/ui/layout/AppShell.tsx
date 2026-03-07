@@ -1869,6 +1869,7 @@ export function AppShell() {
             hasMoreThreads={threadListNextCursor !== null}
             loadingMoreThreads={threadListLoadingMore}
             collapsed={!threadPanelOpen}
+            onCreateThread={() => void handleCreateThread()}
             onRefreshThreads={() => void refreshThreads()}
             onLoadMoreThreads={() => void handleLoadMoreThreads()}
             onSelectThread={(threadId) => void handleSelectThread(threadId)}
@@ -1902,7 +1903,6 @@ export function AppShell() {
               onComposerChange={setComposerValue}
               onSelectorChange={handleComposerSelectorChange}
               onToggleFast={handleFastToggle}
-              onCreateThread={() => void handleCreateThread()}
               onSelectThreadPath={(nextPath) => setSelectedThreadCwdOverride(nextPath)}
               onSubmitPrompt={(nextPrompt) => void handleSubmitPrompt(nextPrompt)}
               onInterrupt={() => void handleInterruptTurn()}
