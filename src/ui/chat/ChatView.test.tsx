@@ -1240,6 +1240,199 @@ describe("ChatView", () => {
     });
   });
 
+  it("starts the composer at two rows and grows up to eight rows", async () => {
+    const originalGetComputedStyle = window.getComputedStyle.bind(window);
+    let mockScrollHeight = 72;
+    const getComputedStyleSpy = vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
+      const styles = originalGetComputedStyle(element);
+      if (!(element instanceof HTMLTextAreaElement) || element.id !== "promptInput") {
+        return styles;
+      }
+      return Object.assign({}, styles, {
+        fontSize: "16px",
+        lineHeight: "24px",
+        paddingTop: "12px",
+        paddingBottom: "12px",
+        borderTopWidth: "1px",
+        borderBottomWidth: "1px",
+      }) as CSSStyleDeclaration;
+    });
+    const scrollHeightSpy = vi
+      .spyOn(HTMLTextAreaElement.prototype, "scrollHeight", "get")
+      .mockImplementation(function mockComposerScrollHeight(this: HTMLTextAreaElement) {
+        return this.id === "promptInput" ? mockScrollHeight : 0;
+      });
+    try {
+      const { rerender } = render(
+        <ChatView
+          turnState={turnState(null)}
+          items={[]}
+          threadLoading={false}
+          threadCwd="C:/workspace/demo"
+          composerValue=""
+          selectorLabel="Select model"
+          selectorDisplay="gpt-5 / medium"
+          selectorOptions={[{ value: "gpt-5", label: "gpt-5" }]}
+          selectorValue="gpt-5"
+          busy={false}
+          onComposerChange={vi.fn()}
+          onSelectorChange={vi.fn(() => true)}
+          onCreateThread={vi.fn()}
+          onSubmitPrompt={vi.fn()}
+          onInterrupt={vi.fn()}
+        />,
+      );
+
+      const textarea = screen.getByPlaceholderText("Ask me anything") as HTMLTextAreaElement;
+      expect(textarea).toHaveAttribute("rows", "2");
+      await waitFor(() => {
+        expect(textarea.style.height).toBe("74px");
+        expect(textarea.style.overflowY).toBe("hidden");
+      });
+
+      mockScrollHeight = 96;
+      rerender(
+        <ChatView
+          turnState={turnState(null)}
+          items={[]}
+          threadLoading={false}
+          threadCwd="C:/workspace/demo"
+          composerValue={"one\ntwo\nthree"}
+          selectorLabel="Select model"
+          selectorDisplay="gpt-5 / medium"
+          selectorOptions={[{ value: "gpt-5", label: "gpt-5" }]}
+          selectorValue="gpt-5"
+          busy={false}
+          onComposerChange={vi.fn()}
+          onSelectorChange={vi.fn(() => true)}
+          onCreateThread={vi.fn()}
+          onSubmitPrompt={vi.fn()}
+          onInterrupt={vi.fn()}
+        />,
+      );
+
+      await waitFor(() => {
+        expect(textarea.style.height).toBe("98px");
+        expect(textarea.style.overflowY).toBe("hidden");
+      });
+
+      mockScrollHeight = 220;
+      rerender(
+        <ChatView
+          turnState={turnState(null)}
+          items={[]}
+          threadLoading={false}
+          threadCwd="C:/workspace/demo"
+          composerValue={"1\n2\n3\n4\n5\n6\n7\n8\n9"}
+          selectorLabel="Select model"
+          selectorDisplay="gpt-5 / medium"
+          selectorOptions={[{ value: "gpt-5", label: "gpt-5" }]}
+          selectorValue="gpt-5"
+          busy={false}
+          onComposerChange={vi.fn()}
+          onSelectorChange={vi.fn(() => true)}
+          onCreateThread={vi.fn()}
+          onSubmitPrompt={vi.fn()}
+          onInterrupt={vi.fn()}
+        />,
+      );
+
+      await waitFor(() => {
+        expect(textarea.style.height).toBe("218px");
+        expect(textarea.style.overflowY).toBe("auto");
+      });
+    } finally {
+      getComputedStyleSpy.mockRestore();
+      scrollHeightSpy.mockRestore();
+    }
+  });
+
+  it("recomputes composer height when the textarea width changes", async () => {
+    const originalGetComputedStyle = window.getComputedStyle.bind(window);
+    const originalResizeObserver = globalThis.ResizeObserver;
+    let mockScrollHeight = 96;
+    let mockClientWidth = 400;
+    const resizeObserverCallbacks: ResizeObserverCallback[] = [];
+    class ResizeObserverMock {
+      constructor(callback: ResizeObserverCallback) {
+        resizeObserverCallbacks.push(callback);
+      }
+
+      observe = vi.fn();
+
+      disconnect = vi.fn();
+    }
+    globalThis.ResizeObserver = ResizeObserverMock as unknown as typeof ResizeObserver;
+    const getComputedStyleSpy = vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
+      const styles = originalGetComputedStyle(element);
+      if (!(element instanceof HTMLTextAreaElement) || element.id !== "promptInput") {
+        return styles;
+      }
+      return Object.assign({}, styles, {
+        fontSize: "16px",
+        lineHeight: "24px",
+        paddingTop: "12px",
+        paddingBottom: "12px",
+        borderTopWidth: "1px",
+        borderBottomWidth: "1px",
+      }) as CSSStyleDeclaration;
+    });
+    const scrollHeightSpy = vi
+      .spyOn(HTMLTextAreaElement.prototype, "scrollHeight", "get")
+      .mockImplementation(function mockComposerScrollHeight(this: HTMLTextAreaElement) {
+        return this.id === "promptInput" ? mockScrollHeight : 0;
+      });
+    const clientWidthSpy = vi
+      .spyOn(HTMLTextAreaElement.prototype, "clientWidth", "get")
+      .mockImplementation(function mockComposerClientWidth(this: HTMLTextAreaElement) {
+        return this.id === "promptInput" ? mockClientWidth : 0;
+      });
+
+    try {
+      render(
+        <ChatView
+          turnState={turnState(null)}
+          items={[]}
+          threadLoading={false}
+          threadCwd="C:/workspace/demo"
+          composerValue="this is a long prompt that may wrap when the width changes"
+          selectorLabel="Select model"
+          selectorDisplay="gpt-5 / medium"
+          selectorOptions={[{ value: "gpt-5", label: "gpt-5" }]}
+          selectorValue="gpt-5"
+          busy={false}
+          onComposerChange={vi.fn()}
+          onSelectorChange={vi.fn(() => true)}
+          onCreateThread={vi.fn()}
+          onSubmitPrompt={vi.fn()}
+          onInterrupt={vi.fn()}
+        />,
+      );
+
+      const textarea = screen.getByPlaceholderText("Ask me anything") as HTMLTextAreaElement;
+      await waitFor(() => {
+        expect(textarea.style.height).toBe("98px");
+      });
+
+      mockClientWidth = 240;
+      mockScrollHeight = 144;
+      resizeObserverCallbacks[0]?.([], {} as ResizeObserver);
+
+      await waitFor(() => {
+        expect(textarea.style.height).toBe("146px");
+      });
+    } finally {
+      if (originalResizeObserver) {
+        globalThis.ResizeObserver = originalResizeObserver;
+      } else {
+        delete (globalThis as Partial<typeof globalThis>).ResizeObserver;
+      }
+      getComputedStyleSpy.mockRestore();
+      scrollHeightSpy.mockRestore();
+      clientWidthSpy.mockRestore();
+    }
+  });
+
   it("toggles fast mode from the composer toolbar", () => {
     const onToggleFast = vi.fn();
 

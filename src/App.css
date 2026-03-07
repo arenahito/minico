@@ -1169,7 +1169,10 @@ pre {
   border: 1px solid var(--border-default);
   border-radius: var(--radius-sm);
   padding: var(--space-3);
-  resize: vertical;
+  box-sizing: border-box;
+  line-height: 1.5;
+  resize: none;
+  overflow-y: hidden;
   background: var(--surface-base);
   color: var(--fg-default);
 }

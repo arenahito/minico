@@ -5,6 +5,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -71,6 +72,8 @@ interface ParsedMessageAttachment {
 const USER_ATTACHMENT_TOKEN_PREFIX_RE = /^\[@([^\]]+)\]\((file:\/\/[^\s)]+)\)\s*/i;
 const STREAM_BOTTOM_THRESHOLD_PX = 16;
 const URL_LITERAL_RE = /https?:\/\/[^\s]+/g;
+const COMPOSER_MIN_ROWS = 2;
+const COMPOSER_MAX_ROWS = 8;
 type MermaidRuntime = {
   initialize: (config: {
     startOnLoad: boolean;
@@ -118,6 +121,42 @@ async function loadMermaid() {
   }
 
   return mermaidLoader;
+}
+
+function parsePixelValue(value: string, fallback = 0): number {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function resolveLineHeight(styles: CSSStyleDeclaration): number {
+  const fontSize = parsePixelValue(styles.fontSize, 16);
+  if (styles.lineHeight === "normal") {
+    return fontSize * 1.2;
+  }
+  const parsed = Number.parseFloat(styles.lineHeight);
+  if (!Number.isFinite(parsed)) {
+    return fontSize * 1.2;
+  }
+  return styles.lineHeight.endsWith("px") ? parsed : parsed * fontSize;
+}
+
+function resizeComposerTextarea(textarea: HTMLTextAreaElement): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  const styles = window.getComputedStyle(textarea);
+  const lineHeight = resolveLineHeight(styles);
+  const padding =
+    parsePixelValue(styles.paddingTop) + parsePixelValue(styles.paddingBottom);
+  const border =
+    parsePixelValue(styles.borderTopWidth) + parsePixelValue(styles.borderBottomWidth);
+  const minHeight = lineHeight * COMPOSER_MIN_ROWS + padding + border;
+  const maxHeight = lineHeight * COMPOSER_MAX_ROWS + padding + border;
+  textarea.style.height = `${minHeight}px`;
+  const measuredHeight = textarea.scrollHeight + border;
+  const nextHeight = Math.min(Math.max(measuredHeight, minHeight), maxHeight);
+  textarea.style.height = `${nextHeight}px`;
+  textarea.style.overflowY = measuredHeight > maxHeight ? "auto" : "hidden";
 }
 
 function isStreamAtBottom(element: HTMLElement): boolean {
@@ -838,6 +877,7 @@ export function ChatView({
 }: ChatViewProps) {
   const selectorRootRef = useRef<HTMLDivElement | null>(null);
   const chatStreamRef = useRef<HTMLDivElement | null>(null);
+  const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const attachmentsRef = useRef<ComposerAttachment[]>([]);
   const streamAtBottomRef = useRef(true);
   const wasBusyRef = useRef(false);
@@ -895,6 +935,45 @@ export function ChatView({
   const fileAttachments = attachments.filter(
     (attachment) => attachment.kind === "file",
   );
+
+  useLayoutEffect(() => {
+    const textarea = composerTextareaRef.current;
+    if (!textarea) {
+      return;
+    }
+    resizeComposerTextarea(textarea);
+  }, [composerValue]);
+
+  useLayoutEffect(() => {
+    const textarea = composerTextareaRef.current;
+    if (!textarea || typeof window === "undefined") {
+      return;
+    }
+    let lastWidth = textarea.clientWidth;
+    const resizeForWidthChange = () => {
+      const nextWidth = textarea.clientWidth;
+      if (nextWidth === 0 || nextWidth === lastWidth) {
+        return;
+      }
+      lastWidth = nextWidth;
+      resizeComposerTextarea(textarea);
+    };
+
+    if (typeof ResizeObserver !== "undefined") {
+      const observer = new ResizeObserver(() => {
+        resizeForWidthChange();
+      });
+      observer.observe(textarea);
+      return () => {
+        observer.disconnect();
+      };
+    }
+
+    window.addEventListener("resize", resizeForWidthChange);
+    return () => {
+      window.removeEventListener("resize", resizeForWidthChange);
+    };
+  }, []);
 
   const appendAttachmentsFromSelections = useCallback((selections: string[]): void => {
     const normalizedSelections = selections
@@ -1398,8 +1477,12 @@ export function ChatView({
             ) : null}
             <textarea
               id="promptInput"
+              ref={composerTextareaRef}
               value={composerValue}
-              onChange={(event) => onComposerChange(event.currentTarget.value)}
+              onChange={(event) => {
+                resizeComposerTextarea(event.currentTarget);
+                onComposerChange(event.currentTarget.value);
+              }}
               onKeyDown={(event) => {
                 if (event.key !== "Enter" || !event.ctrlKey) {
                   return;
@@ -1411,7 +1494,7 @@ export function ChatView({
                 onSubmitPrompt(composedPrompt);
               }}
               placeholder="Ask me anything"
-              rows={4}
+              rows={COMPOSER_MIN_ROWS}
             />
             <div className="composer-toolbar">
               <div className="composer-left-controls">
